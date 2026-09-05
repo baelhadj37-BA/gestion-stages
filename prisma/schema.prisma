@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "mysql"
-  url      = env("DATABASE_URL")
+  url= env("DATABASE_URL")
 }
 
 enum Role {
@@ -105,12 +105,14 @@ model Stage {
 }
 
 model JournalBord {
-  id        Int      @id @default(autoincrement())
-  semaine   Int
-  contenu   String   @db.Text
-  statut    String   @default("EN_ATTENTE")
-  dateDepot DateTime @default(now())
-  alerte    Boolean  @default(false)
+  id             Int       @id @default(autoincrement())
+  semaine        Int
+  contenu        String    @db.Text
+  statut         String    @default("EN_ATTENTE")
+  dateDepot      DateTime  @default(now())
+  alerte         Boolean   @default(false)
+  commentaire    String?   @db.Text
+  dateValidation DateTime?
 
   stage   Stage @relation(fields: [stageId], references: [id])
   stageId Int
