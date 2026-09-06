@@ -5,78 +5,58 @@ import { verifierToken } from "@/lib/auth";
 const prisma = new PrismaClient();
 
 function getUser(req: NextRequest) {
-  const authHeader = req.headers.get("authorization"); // "Bearer xxx"
+  const authHeader = req.headers.get("authorization");
   const token = authHeader?.split(" ")[1];
   if (!token) return null;
-  return verifierToken(token); // { userId, role } | null
+  return verifierToken(token);
 }
 
-// POST /api/journal — l'étudiant soumet son rapport de la semaine
-export async function POST(req: NextRequest) {
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const { id: idParam } = await params;
+    const id = Number(idParam);
+
     const user = getUser(req);
-    if (!user || user.role !== "ETUDIANT") {
+    if (!user || user.role !== "ENTREPRISE") {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
 
     const body = await req.json();
-    const { stageId, semaine, contenu } = body;
+    const { statut, commentaire } = body;
 
-    if (!stageId || !semaine || !contenu) {
+    if (!["VALIDE", "REJETE"].includes(statut)) {
       return NextResponse.json(
-        { error: "Champs requis: stageId, semaine, contenu" },
+        { error: "Statut invalide (VALIDE ou REJETE attendu)" },
         { status: 400 }
       );
     }
 
-    const stage = await prisma.stage.findFirst({
-      where: { id: Number(stageId), etudiantId: user.userId },
+    const journal = await prisma.journalBord.findUnique({
+      where: { id },
+      include: {
+        stage: { include: { candidature: { include: { offre: true } } } },
+      },
     });
-    if (!stage) {
-      return NextResponse.json({ error: "Stage introuvable" }, { status: 404 });
+    if (!journal) {
+      return NextResponse.json({ error: "Journal introuvable" }, { status: 404 });
     }
 
-    // Cherche un journal existant pour cette semaine, sinon le crée
-    const existant = await prisma.journalBord.findFirst({
-      where: { stageId: Number(stageId), semaine: Number(semaine) },
+    const entrepriseId = journal.stage.candidature.offre.entrepriseId;
+    if (entrepriseId !== user.userId) {
+      return NextResponse.json({ error: "Non autorisé sur ce stage" }, { status: 403 });
+    }
+
+    const updated = await prisma.journalBord.update({
+      where: { id },
+      data: { statut, commentaire: commentaire ?? null, dateValidation: new Date() },
     });
 
-    const journal = existant
-      ? await prisma.journalBord.update({
-          where: { id: existant.id },
-          data: { contenu, statut: "SOUMIS", dateDepot: new Date(), alerte: false },
-        })
-      : await prisma.journalBord.create({
-          data: {
-            stageId: Number(stageId),
-            semaine: Number(semaine),
-            contenu,
-            statut: "SOUMIS",
-            dateDepot: new Date(),
-          },
-        });
-
-    return NextResponse.json(journal, { status: 201 });
+    return NextResponse.json(updated);
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
-}
-
-// GET /api/journal?stageId=... — historique des rapports d'un stage
-export async function GET(req: NextRequest) {
-  const user = getUser(req);
-  if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-
-  const stageId = req.nextUrl.searchParams.get("stageId");
-  if (!stageId) {
-    return NextResponse.json({ error: "stageId requis" }, { status: 400 });
-  }
-
-  const journaux = await prisma.journalBord.findMany({
-    where: { stageId: Number(stageId) },
-    orderBy: { semaine: "asc" },
-  });
-
-  return NextResponse.json(journaux);
 }
