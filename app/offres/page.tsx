@@ -1,7 +1,8 @@
 import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
+import BoutonPostuler from './BoutonPostuler';
 
-export const revalidate = 0; // Garantit un affichage en temps réel des nouvelles offres
+export const revalidate = 0;
 
 export default async function OffresPage() {
   const offres = await prisma.offre.findMany({
@@ -65,9 +66,7 @@ export default async function OffresPage() {
                   <span>⏱️ {offre.duree}</span>
                 </div>
 
-                <button className="bg-gray-800 hover:bg-blue-600 text-white text-xs font-medium px-3.5 py-2 rounded-lg transition border border-gray-700 hover:border-blue-500">
-                  Postuler
-                </button>
+                <BoutonPostuler offreId={offre.id} />
               </div>
             </div>
           ))}

@@ -6,6 +6,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { titre, entreprise, description, localisation, duree, tags } = body;
 
+    // Validation des champs obligatoires
     if (!titre || !entreprise || !description || !localisation || !duree) {
       return NextResponse.json(
         { error: 'Veuillez remplir tous les champs obligatoires.' },
@@ -13,6 +14,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // Création de l'offre en base de données
     const nouvelleOffre = await prisma.offre.create({
       data: {
         titre,
@@ -26,11 +28,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json(nouvelleOffre, { status: 201 });
   } catch (error: unknown) {
-    console.error('Erreur Prisma:', error);
+    console.error("Erreur lors de la création de l'offre:", error);
     const errorMessage = error instanceof Error ? error.message : String(error);
 
     return NextResponse.json(
-      { error: `Détail de l'erreur BD: ${errorMessage}` },
+      { error: `Erreur serveur: ${errorMessage}` },
       { status: 500 }
     );
   }
