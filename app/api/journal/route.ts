@@ -4,6 +4,7 @@ import { verifierToken } from "@/lib/auth";
 
 const prisma = new PrismaClient();
 
+// Son rôle est de récupérer l'utilisateur connecté à partir du JWT.
 function getUser(req: NextRequest) {
   const authHeader = req.headers.get("authorization"); // "Bearer xxx"
   const token = authHeader?.split(" ")[1];

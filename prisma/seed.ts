@@ -43,6 +43,17 @@ async function main() {
     },
   });
 
+  // 3bis. Créer un administrateur   <-- NOUVEAU BLOC AJOUTÉ ICI
+  const admin = await prisma.user.create({
+    data: {
+      nom: "Sarr",
+      prenom: "Aminata",
+      email: "admin@test.com",
+      motDePasse: motDePasseHash,
+      role: "ADMIN",
+    },
+  });
+
   // 4. Créer une offre publiée par l'entreprise
   const offre = await prisma.offre.create({
     data: {
@@ -77,11 +88,13 @@ async function main() {
     },
   });
 
+  // <-- C'EST ICI, à la fin de main(), que se trouve console.log
   console.log("Données de test créées :");
   console.log({
     etudiantId: etudiant.id,
     entrepriseId: entreprise.id,
     encadreurId: encadreur.id,
+    adminId: admin.id,
     stageId: stage.id,
   });
 }
