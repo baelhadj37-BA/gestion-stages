@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { verifierToken } from "@/lib/auth";
-import { genererPdfConvention } from "@/lib/documents";
-
+import { genererPdfConvention, creerDocumentSecurise } from "@/lib/documents";
 
 const prisma = new PrismaClient();
 
@@ -64,17 +63,20 @@ export async function PATCH(
       return NextResponse.json(rejetee);
     }
 
-    // Validation finale : déclenche la génération du PDF
-    const pdfUrl = await genererPdfConvention(id);
+  // Validation finale : déclenche la génération du PDF, puis le sécurise avec un QR Code
+const pdfUrl = await genererPdfConvention(id);
 
-    const validee = await prisma.convention.update({
-      where: { id },
-      data: {
-        statut: "VALIDEE",
-        pdfUrl,
-        dateValidation: new Date(),
-      },
-    });
+const validee = await prisma.convention.update({
+  where: { id },
+  data: {
+    statut: "VALIDEE",
+    pdfUrl,
+    dateValidation: new Date(),
+  },
+});
+
+// Crée le document sécurisé (UUID + QR Code) lié à ce stage
+await creerDocumentSecurise(convention.stageId, "CONVENTION", pdfUrl);
 
     // TODO (Astou) : notifier l'étudiant que sa convention est validée + PDF disponible
 

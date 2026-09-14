@@ -1,7 +1,26 @@
-// Point d'intégration avec le module Génération PDF de Khady (section 3.7 du CDC).
-// Cette fonction est un placeholder : à remplacer par son vrai code Puppeteer.
+import { PrismaClient } from "@prisma/client";
+import { genererQrCode } from "./qrcode";
+
+const prisma = new PrismaClient();
+
 export async function genererPdfConvention(conventionId: number): Promise<string> {
   console.log(`[TODO Khady] Générer le PDF de la convention #${conventionId}`);
-  // Retourne une URL factice en attendant la vraie implémentation
   return `/documents/convention-${conventionId}.pdf`;
+}
+
+export async function creerDocumentSecurise(
+  stageId: number,
+  type: string,
+  pdfUrl: string
+) {
+  const document = await prisma.document.create({
+    data: { stageId, type, pdfUrl },
+  });
+
+  const qrCodeUrl = await genererQrCode(document.uuid);
+
+  return prisma.document.update({
+    where: { id: document.id },
+    data: { qrCodeUrl },
+  });
 }

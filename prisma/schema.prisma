@@ -134,6 +134,8 @@ model Document {
   id             Int      @id @default(autoincrement())
   type           String
   pdfUrl         String
+  uuid           String   @unique @default(uuid())
+  qrCodeUrl      String?
   dateGeneration DateTime @default(now())
 
   stage   Stage @relation(fields: [stageId], references: [id])
