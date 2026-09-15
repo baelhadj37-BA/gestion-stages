@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { verifierToken } from "@/lib/auth";
-import { genererPdfConvention, creerDocumentSecurise } from "@/lib/documents";
+import { creerDocumentSecurise } from "@/lib/documents";
 
 const prisma = new PrismaClient();
 
@@ -26,7 +26,7 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const { action, motifRejet } = body; // action: "VALIDER" | "REJETER"
+    const { action, motifRejet } = body;
 
     if (!["VALIDER", "REJETER"].includes(action)) {
       return NextResponse.json(
@@ -46,7 +46,6 @@ export async function PATCH(
       return NextResponse.json({ error: "Convention introuvable" }, { status: 404 });
     }
 
-    // Machine à états : l'admin ne peut agir qu'à l'étape ETAPE_ENTREPRISE
     if (convention.statut !== "ETAPE_ENTREPRISE") {
       return NextResponse.json(
         { error: `Action impossible depuis le statut actuel: ${convention.statut}` },
@@ -63,20 +62,17 @@ export async function PATCH(
       return NextResponse.json(rejetee);
     }
 
-  // Validation finale : déclenche la génération du PDF, puis le sécurise avec un QR Code
-const pdfUrl = await genererPdfConvention(id);
+    // Validation finale : crée le Document, génère le QR Code, puis le PDF avec Khady
+    const document = await creerDocumentSecurise(convention.stageId, "CONVENTION");
 
-const validee = await prisma.convention.update({
-  where: { id },
-  data: {
-    statut: "VALIDEE",
-    pdfUrl,
-    dateValidation: new Date(),
-  },
-});
-
-// Crée le document sécurisé (UUID + QR Code) lié à ce stage
-await creerDocumentSecurise(convention.stageId, "CONVENTION", pdfUrl);
+    const validee = await prisma.convention.update({
+      where: { id },
+      data: {
+        statut: "VALIDEE",
+        pdfUrl: document.pdfUrl,
+        dateValidation: new Date(),
+      },
+    });
 
     // TODO (Astou) : notifier l'étudiant que sa convention est validée + PDF disponible
 
