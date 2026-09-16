@@ -65,15 +65,19 @@ model Offre {
 }
 
 model Candidature {
-  id        String            @id @default(cuid())
+  id        String            @id @default(uuid())
+  cvUrl     String
   statut    StatutCandidature @default(EN_ATTENTE)
-  userId    String
-  user      User              @relation(fields: [userId], references: [id])
+
   offreId   String
   offre     Offre             @relation(fields: [offreId], references: [id])
+
+  userId    String?
+  user      User?             @relation(fields: [userId], references: [id])
+
   stage     Stage?
+
   createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
 }
 
 model Stage {
@@ -88,6 +92,7 @@ model Stage {
   etudiantId    String
   encadreur     User        @relation("EncadreurStage", fields: [encadreurId], references: [id])
   encadreurId   String
+
   candidature   Candidature @relation(fields: [candidatureId], references: [id])
   candidatureId String      @unique
 

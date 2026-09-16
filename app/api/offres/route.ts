@@ -1,38 +1,34 @@
-import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 
-export async function POST(request: Request) {
+export async function GET(request: Request) {
   try {
-    const body = await request.json();
-    const { titre, entreprise, description, localisation, duree, tags } = body;
+    const { searchParams } = new URL(request.url);
+    const query = searchParams.get('q') || '';
+    const localisation = searchParams.get('localisation') || '';
 
-    if (!titre || !entreprise || !description || !localisation || !duree) {
-      return NextResponse.json(
-        { error: 'Veuillez remplir tous les champs obligatoires.' },
-        { status: 400 }
-      );
-    }
-
-    // Création de l'offre en base de données
-    const nouvelleOffre = await prisma.offre.create({
-      data: {
-        titre,
-        entreprise,
-        description,
-        localisation,
-        duree,
-        tags: tags || null,
+    const offres = await prisma.offre.findMany({
+      where: {
+        AND: [
+          query
+            ? {
+                OR: [
+                  { titre: { contains: query } },
+                  { description: { contains: query } },
+                  { entreprise: { contains: query } },
+                ],
+              }
+            : {},
+          localisation
+            ? { localisation: { contains: localisation } }
+            : {},
+        ],
       },
+      orderBy: { createdAt: 'desc' },
     });
 
-    return NextResponse.json(nouvelleOffre, { status: 201 });
-  } catch (error: unknown) {
-    console.error('Erreur Prisma:', error);
-    const errorMessage = error instanceof Error ? error.message : String(error);
-
-    return NextResponse.json(
-      { error: `Détail de l'erreur BD: ${errorMessage}` },
-      { status: 500 }
-    );
+    return NextResponse.json(offres);
+  } catch {
+    return NextResponse.json({ error: 'Erreur lors de la récupération des offres' }, { status: 500 });
   }
 }

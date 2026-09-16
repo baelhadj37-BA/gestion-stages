@@ -1,61 +1,59 @@
-import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 
-export async function POST(request: Request) {
+// GET : Récupérer toutes les candidatures
+export async function GET() {
   try {
-    const { offreId, userId } = await request.json();
-
-    if (!offreId) {
-      return NextResponse.json(
-        { error: "L'identifiant de l'offre est requis." },
-        { status: 400 }
-      );
-    }
-
-    // Récupérer un utilisateur par défaut si non fourni
-    let targetUserId = userId;
-    if (!targetUserId) {
-      const user = await prisma.user.findFirst();
-      if (!user) {
-        return NextResponse.json(
-          { error: 'Aucun utilisateur trouvé en base de données.' },
-          { status: 400 }
-        );
-      }
-      targetUserId = user.id;
-    }
-
-    // Vérifier si l'utilisateur a déjà postulé
-    const candidatureExistante = await prisma.candidature.findFirst({
-      where: {
-        offreId,
-        userId: targetUserId,
+    const candidatures = await prisma.candidature.findMany({
+      include: {
+        offre: {
+          select: {
+            titre: true,
+            entreprise: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
       },
     });
 
-    if (candidatureExistante) {
+    return NextResponse.json(candidatures, { status: 200 });
+  } catch (error) {
+    console.error('Erreur lors de la récupération des candidatures :', error);
+    return NextResponse.json(
+      { error: 'Erreur lors du chargement des candidatures.' },
+      { status: 500 }
+    );
+  }
+}
+
+// POST : Créer une candidature
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const { offreId, cvUrl } = body;
+
+    if (!offreId || !cvUrl) {
       return NextResponse.json(
-        { error: 'Vous avez déjà postulé à cette offre.' },
+        { error: 'Champs requis manquants (offreId et cvUrl).' },
         { status: 400 }
       );
     }
 
-    // Enregistrer la candidature
-    const nouvelleCandidature = await prisma.candidature.create({
+    const candidature = await prisma.candidature.create({
       data: {
         offreId,
-        userId: targetUserId,
+        cvUrl,
         statut: 'EN_ATTENTE',
       },
     });
 
-    return NextResponse.json(nouvelleCandidature, { status: 201 });
-  } catch (error: unknown) {
-    console.error('Erreur candidature API:', error);
-    const errorMessage = error instanceof Error ? error.message : String(error);
-
+    return NextResponse.json(candidature, { status: 201 });
+  } catch (error) {
+    console.error('Erreur lors de la création de la candidature :', error);
     return NextResponse.json(
-      { error: `Erreur serveur: ${errorMessage}` },
+      { error: 'Erreur serveur lors de la soumission de la candidature.' },
       { status: 500 }
     );
   }
