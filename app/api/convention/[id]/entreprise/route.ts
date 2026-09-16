@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { verifierToken } from "@/lib/auth";
+import { notifierUtilisateur } from "@/lib/notifications";
 
 const prisma = new PrismaClient();
 
@@ -25,7 +26,7 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const { action, motifRejet } = body; // action: "VALIDER" | "REJETER"
+    const { action, motifRejet } = body;
 
     if (!["VALIDER", "REJETER"].includes(action)) {
       return NextResponse.json(
@@ -50,13 +51,11 @@ export async function PATCH(
       return NextResponse.json({ error: "Convention introuvable" }, { status: 404 });
     }
 
-    // Vérifie que c'est bien l'entreprise concernée par ce stage
     const entrepriseId = convention.stage.candidature.offre.entrepriseId;
     if (entrepriseId !== user.userId) {
       return NextResponse.json({ error: "Non autorisé sur ce stage" }, { status: 403 });
     }
 
-    // Machine à états : on ne peut agir qu'à l'étape ETAPE_ETUDIANT
     if (convention.statut !== "ETAPE_ETUDIANT") {
       return NextResponse.json(
         { error: `Action impossible depuis le statut actuel: ${convention.statut}` },
@@ -64,17 +63,31 @@ export async function PATCH(
       );
     }
 
-    const nouveauStatut = action === "VALIDER" ? "ETAPE_ENTREPRISE" : "REJETEE";
+    if (action === "REJETER") {
+      const rejetee = await prisma.convention.update({
+        where: { id },
+        data: { statut: "REJETEE", motifRejet },
+      });
+
+      await notifierUtilisateur(
+        convention.stage.etudiantId,
+        `Votre convention a été rejetée. Motif : ${motifRejet}`,
+        "CONVENTION_REJETEE"
+      );
+
+      return NextResponse.json(rejetee);
+    }
 
     const updated = await prisma.convention.update({
       where: { id },
-      data: {
-        statut: nouveauStatut,
-        motifRejet: action === "REJETER" ? motifRejet : null,
-      },
+      data: { statut: "ETAPE_ENTREPRISE" },
     });
 
-    // TODO (Astou) : notifier l'étudiant du résultat (validation ou motif de rejet)
+    await notifierUtilisateur(
+      convention.stage.etudiantId,
+      "Votre convention a été validée par l'entreprise, elle passe en validation administrative.",
+      "CONVENTION_ETAPE_SUIVANTE"
+    );
 
     return NextResponse.json(updated);
   } catch (err) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { verifierToken } from "@/lib/auth";
+import { notifierUtilisateur } from "@/lib/notifications";
 
 const prisma = new PrismaClient();
 
@@ -26,15 +27,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Champ requis: stageId" }, { status: 400 });
     }
 
-    // Vérifie que le stage appartient bien à l'étudiant connecté
     const stage = await prisma.stage.findFirst({
       where: { id: Number(stageId), etudiantId: user.userId },
+      include: { candidature: { include: { offre: true } } },
     });
     if (!stage) {
       return NextResponse.json({ error: "Stage introuvable" }, { status: 404 });
     }
 
-    // Un stage ne peut avoir qu'une seule convention (contrainte @unique)
     const existante = await prisma.convention.findUnique({
       where: { stageId: Number(stageId) },
     });
@@ -52,7 +52,11 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // TODO (Astou) : notifier l'entreprise qu'une convention attend sa validation
+    await notifierUtilisateur(
+      stage.candidature.offre.entrepriseId,
+      `Une nouvelle convention attend votre validation (stage #${stageId}).`,
+      "CONVENTION_A_VALIDER"
+    );
 
     return NextResponse.json(convention, { status: 201 });
   } catch (err) {
@@ -79,5 +83,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Convention introuvable" }, { status: 404 });
   }
 
-  return NextResponse.json(convention);
+  // Récupère le QR Code associé, s'il existe (généré à la validation admin)
+  let qrCodeUrl: string | null = null;
+  if (convention.statut === "VALIDEE") {
+    const document = await prisma.document.findFirst({
+      where: { stageId: Number(stageId), type: "CONVENTION" },
+      orderBy: { dateGeneration: "desc" },
+    });
+    qrCodeUrl = document?.qrCodeUrl ?? null;
+  }
+
+  return NextResponse.json({ ...convention, qrCodeUrl });
 }

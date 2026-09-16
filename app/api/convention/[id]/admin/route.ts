@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { verifierToken } from "@/lib/auth";
 import { creerDocumentSecurise } from "@/lib/documents";
+import { notifierUtilisateur } from "@/lib/notifications";
 
 const prisma = new PrismaClient();
 
@@ -41,7 +42,10 @@ export async function PATCH(
       );
     }
 
-    const convention = await prisma.convention.findUnique({ where: { id } });
+    const convention = await prisma.convention.findUnique({
+      where: { id },
+      include: { stage: true },
+    });
     if (!convention) {
       return NextResponse.json({ error: "Convention introuvable" }, { status: 404 });
     }
@@ -58,7 +62,13 @@ export async function PATCH(
         where: { id },
         data: { statut: "REJETEE", motifRejet },
       });
-      // TODO (Astou) : notifier l'entreprise du motif de rejet
+
+      await notifierUtilisateur(
+        convention.stage.etudiantId,
+        `Votre convention a été rejetée par l'administration. Motif : ${motifRejet}`,
+        "CONVENTION_REJETEE"
+      );
+
       return NextResponse.json(rejetee);
     }
 
@@ -74,7 +84,11 @@ export async function PATCH(
       },
     });
 
-    // TODO (Astou) : notifier l'étudiant que sa convention est validée + PDF disponible
+    await notifierUtilisateur(
+      convention.stage.etudiantId,
+      "Votre convention est validée ! Le document officiel est disponible.",
+      "CONVENTION_VALIDEE"
+    );
 
     return NextResponse.json(validee);
   } catch (err) {
