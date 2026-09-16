@@ -13,6 +13,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // Création de l'offre en base de données
     const nouvelleOffre = await prisma.offre.create({
       data: {
         titre,
