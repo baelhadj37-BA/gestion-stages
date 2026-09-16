@@ -48,69 +48,63 @@ export default function OffresPage() {
   }, [search, localisation]);
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-white">Offres de Stage</h1>
-        <p className="text-gray-400 text-sm">Trouvez le stage qui correspond à vos compétences.</p>
+    <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+      <div style={{ marginBottom: '1.5rem' }}>
+        <h1 style={{ fontSize: '1.875rem', fontWeight: 'bold' }}>Offres de Stage</h1>
+        <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>Trouvez le stage qui correspond à vos compétences.</p>
       </div>
 
-      {/* Barre de Recherche & Filtres */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-900 p-4 rounded-xl border border-gray-800">
+      {/* Barre de recherche */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
         <input
           type="text"
-          placeholder="Rechercher par titre, entreprise ou mot-clé..."
+          placeholder="Rechercher par titre, entreprise..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-blue-500"
+          style={{ padding: '0.5rem 1rem', borderRadius: '0.375rem', border: '1px solid #d1d5db' }}
         />
         <input
           type="text"
-          placeholder="Filtrer par ville/localisation (ex: Dakar)..."
+          placeholder="Filtrer par ville/localisation..."
           value={localisation}
           onChange={(e) => setLocalisation(e.target.value)}
-          className="bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-blue-500"
+          style={{ padding: '0.5rem 1rem', borderRadius: '0.375rem', border: '1px solid #d1d5db' }}
         />
       </div>
 
-      {/* Liste des Offres */}
+      {/* Affichage en Tableau */}
       {loading ? (
-        <p className="text-gray-400 text-center py-8">Chargement des offres...</p>
+        <p style={{ textAlign: 'center', color: '#6b7280' }}>Chargement des offres...</p>
       ) : offres.length === 0 ? (
-        <p className="text-gray-400 text-center py-8">Aucune offre ne correspond à votre recherche.</p>
+        <p style={{ textAlign: 'center', color: '#6b7280' }}>Aucune offre trouvée.</p>
       ) : (
-        <div className="grid grid-cols-1 gap-4">
-          {offres.map((offre) => (
-            <div key={offre.id} className="bg-gray-900 border border-gray-800 rounded-xl p-6 flex flex-col justify-between">
-              <div>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h2 className="text-xl font-semibold text-white capitalize">{offre.titre}</h2>
-                    <p className="text-sm text-blue-400 mt-1">{offre.entreprise} • 📍 {offre.localisation}</p>
-                  </div>
-                  <span className="text-xs bg-gray-800 text-gray-300 px-3 py-1 rounded-full border border-gray-700">
-                    ⏱️ {offre.duree}
-                  </span>
-                </div>
-
-                <p className="text-gray-300 text-sm mt-4 line-clamp-3">{offre.description}</p>
-
-                {/* Badges Tags / Compétences */}
-                {offre.tags && offre.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-4">
-                    {offre.tags.map((tag, idx) => (
-                      <span key={idx} className="bg-blue-950/60 text-blue-300 text-xs px-2.5 py-1 rounded-md border border-blue-800/50">
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-6 pt-4 border-t border-gray-800/80 flex justify-end">
-                <BoutonPostuler offreId={offre.id} titreOffre={offre.titre} />
-              </div>
-            </div>
-          ))}
+        <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: '0.5rem' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
+            <thead style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+              <tr>
+                <th style={{ padding: '0.75rem 1rem', fontWeight: '600' }}>Titre du poste</th>
+                <th style={{ padding: '0.75rem 1rem', fontWeight: '600' }}>Entreprise</th>
+                <th style={{ padding: '0.75rem 1rem', fontWeight: '600' }}>Localisation</th>
+                <th style={{ padding: '0.75rem 1rem', fontWeight: '600' }}>Durée</th>
+                <th style={{ padding: '0.75rem 1rem', fontWeight: '600' }}>Description</th>
+                <th style={{ padding: '0.75rem 1rem', fontWeight: '600', textAlign: 'right' }}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {offres.map((offre) => (
+                <tr key={offre.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                  <td style={{ padding: '0.75rem 1rem', fontWeight: '600' }}>{offre.titre}</td>
+                  <td style={{ padding: '0.75rem 1rem' }}>{offre.entreprise}</td>
+                  <td style={{ padding: '0.75rem 1rem' }}>📍 {offre.localisation}</td>
+                  <td style={{ padding: '0.75rem 1rem' }}>⏱️ {offre.duree}</td>
+                  <td style={{ padding: '0.75rem 1rem', color: '#4b5563', maxWidth: '300px' }}>{offre.description}</td>
+                  <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
+                    <BoutonPostuler offreId={offre.id} titreOffre={offre.titre} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

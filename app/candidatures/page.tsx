@@ -1,61 +1,130 @@
-import { prisma } from '@/lib/prisma';
+'use client';
 
-export const revalidate = 0;
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
 
-export default async function CandidaturesPage() {
-  const candidatures = await prisma.candidature.findMany({
-    include: {
-      offre: true,
-      user: true,
-    },
-    orderBy: {
-      createdAt: 'desc',
-    },
-  });
+interface Candidature {
+  id: string;
+  offreTitre: string;
+  entreprise: string;
+  datePostulation: string;
+  statut: 'EN_ATTENTE' | 'ACCEPTE' | 'REFUSE';
+}
+
+export default function CandidaturesPage() {
+  const [candidatures, setCandidatures] = useState<Candidature[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let isSubscribed = true;
+
+    const fetchCandidatures = async () => {
+      try {
+        const res = await fetch('/api/candidatures');
+        const data = await res.json();
+        if (isSubscribed && Array.isArray(data)) {
+          setCandidatures(data);
+        }
+      } catch (err) {
+        console.error('Erreur lors du chargement des candidatures:', err);
+      } finally {
+        if (isSubscribed) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchCandidatures();
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, []);
+
+  const getBadgeStyle = (statut: string) => {
+    switch (statut) {
+      case 'ACCEPTE':
+        return { backgroundColor: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0' };
+      case 'REFUSE':
+        return { backgroundColor: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca' };
+      default:
+        return { backgroundColor: '#fef3c7', color: '#92400e', border: '1px solid #fde68a' };
+    }
+  };
+
+  const getStatutLabel = (statut: string) => {
+    switch (statut) {
+      case 'ACCEPTE':
+        return 'Acceptée';
+      case 'REFUSE':
+        return 'Refusée';
+      default:
+        return 'En attente';
+    }
+  };
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white">Mes Candidatures</h1>
-        <p className="text-gray-400 text-sm mt-1">
-          Suivez l&apos;état de vos postulations aux offres de stage
+    <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+      {/* En-tête */}
+      <div style={{ marginBottom: '2rem' }}>
+        <h1 style={{ fontSize: '1.875rem', fontWeight: 'bold' }}>Mes Candidatures</h1>
+        <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>
+          Suivez l'état de vos postulations aux offres de stage
         </p>
       </div>
 
-      {candidatures.length === 0 ? (
-        <div className="text-center py-12 bg-gray-900 rounded-xl border border-gray-800">
-          <p className="text-gray-400">Vous n&apos;avez encore postulé à aucune offre.</p>
+      {/* Tableau des Candidatures */}
+      {loading ? (
+        <p style={{ textAlign: 'center', color: '#6b7280', padding: '2rem' }}>
+          Chargement de vos candidatures...
+        </p>
+      ) : candidatures.length === 0 ? (
+        <div style={{ padding: '3rem', textAlign: 'center', border: '1px solid #e5e7eb', borderRadius: '0.5rem', backgroundColor: '#ffffff' }}>
+          <p style={{ color: '#6b7280', marginBottom: '1rem' }}>
+            Vous n'avez encore postulé à aucune offre.
+          </p>
+          <Link
+            href="/offres"
+            style={{ display: 'inline-block', backgroundColor: '#2563eb', color: '#ffffff', padding: '0.5rem 1rem', borderRadius: '0.375rem', textDecoration: 'none', fontSize: '0.875rem', fontWeight: '500' }}
+          >
+            Découvrir les offres
+          </Link>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-800 bg-gray-900">
-          <table className="w-full text-left text-sm text-gray-300">
-            <thead className="bg-gray-800/60 text-xs uppercase text-gray-400 border-b border-gray-800">
-              <tr>
-                <th className="px-6 py-4">Offre</th>
-                <th className="px-6 py-4">Entreprise</th>
-                <th className="px-6 py-4">Candidat</th>
-                <th className="px-6 py-4">Date</th>
-                <th className="px-6 py-4">Statut</th>
+        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '0.5rem', overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
+                <th style={{ padding: '0.75rem 1rem', fontWeight: '600' }}>Offre de stage</th>
+                <th style={{ padding: '0.75rem 1rem', fontWeight: '600' }}>Entreprise</th>
+                <th style={{ padding: '0.75rem 1rem', fontWeight: '600' }}>Date de postulation</th>
+                <th style={{ padding: '0.75rem 1rem', fontWeight: '600' }}>Statut</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
-              {candidatures.map((candidature) => (
-                <tr key={candidature.id} className="hover:bg-gray-800/40 transition">
-                  <td className="px-6 py-4 font-medium text-white capitalize">
-                    {candidature.offre.titre}
+            <tbody>
+              {candidatures.map((item) => (
+                <tr key={item.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                  <td style={{ padding: '0.75rem 1rem', fontWeight: '600', color: '#111827' }}>
+                    {item.offreTitre}
                   </td>
-                  <td className="px-6 py-4 text-blue-400 font-medium">
-                    {candidature.offre.entreprise}
+                  <td style={{ padding: '0.75rem 1rem', color: '#4b5563' }}>
+                    {item.entreprise}
                   </td>
-                  <td className="px-6 py-4 text-gray-300">
-                    {candidature.user?.nom || candidature.user?.email || 'N/A'}
+                  <td style={{ padding: '0.75rem 1rem', color: '#4b5563' }}>
+                    {item.datePostulation}
                   </td>
-                  <td className="px-6 py-4 text-gray-400 text-xs">
-                    {new Date(candidature.createdAt).toLocaleDateString('fr-FR')}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="bg-yellow-950/60 text-yellow-400 border border-yellow-800 text-xs px-3 py-1 rounded-full font-medium">
-                      {candidature.statut}
+                  <td style={{ padding: '0.75rem 1rem' }}>
+                    <span
+                      style={{
+                        ...getBadgeStyle(item.statut),
+                        padding: '0.25rem 0.625rem',
+                        borderRadius: '9999px',
+                        fontSize: '0.75rem',
+                        fontWeight: '600',
+                        display: 'inline-block',
+                      }}
+                    >
+                      {getStatutLabel(item.statut)}
                     </span>
                   </td>
                 </tr>

@@ -1,73 +1,107 @@
-import { prisma } from '@/lib/prisma';
+'use client';
+
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
-export const revalidate = 0;
+interface Offre {
+  id: string;
+  titre: string;
+  entreprise: string;
+  localisation: string;
+  duree: string;
+}
 
-export default async function DashboardPage() {
-  const [totalOffres, totalCandidatures, totalUsers] = await Promise.all([
-    prisma.offre.count(),
-    prisma.candidature.count(),
-    prisma.user.count(),
-  ]);
+export default function DashboardPage() {
+  const [offres, setOffres] = useState<Offre[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const dernieresOffres = await prisma.offre.findMany({
-    take: 5,
-    orderBy: { createdAt: 'desc' },
-  });
+  useEffect(() => {
+    let isSubscribed = true;
+
+    const fetchOffres = async () => {
+      try {
+        const res = await fetch('/api/offres');
+        const data = await res.json();
+        if (isSubscribed && Array.isArray(data)) {
+          setOffres(data.slice(0, 5)); // Récupère les 5 dernières offres
+        }
+      } catch (err) {
+        console.error('Erreur lors du chargement des offres:', err);
+      } finally {
+        if (isSubscribed) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchOffres();
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, []);
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white">Tableau de Bord</h1>
-        <p className="text-gray-400 text-sm mt-1">
-          Vue d&apos;ensemble de la plateforme de gestion de stages
-        </p>
+    <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+      {/* En-tête */}
+      <div style={{ marginBottom: '2rem' }}>
+        <h1 style={{ fontSize: '1.875rem', fontWeight: 'bold' }}>Tableau de Bord</h1>
+        <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>Vue d'ensemble de la plateforme de gestion de stages</p>
       </div>
 
-      {/* Cartes statistiques */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <p className="text-gray-400 text-sm font-medium">Offres de Stage</p>
-          <p className="text-4xl font-bold text-white mt-2">{totalOffres}</p>
+      {/* Cartes de statistiques */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
+        <div style={{ padding: '1.5rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', backgroundColor: '#ffffff', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)' }}>
+          <p style={{ fontSize: '0.875rem', color: '#6b7280', fontWeight: '500' }}>Offres de Stage</p>
+          <p style={{ fontSize: '2.25rem', fontWeight: 'bold', marginTop: '0.5rem', color: '#111827' }}>{offres.length}</p>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <p className="text-gray-400 text-sm font-medium">Candidatures Soumises</p>
-          <p className="text-4xl font-bold text-blue-400 mt-2">{totalCandidatures}</p>
+
+        <div style={{ padding: '1.5rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', backgroundColor: '#ffffff', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)' }}>
+          <p style={{ fontSize: '0.875rem', color: '#6b7280', fontWeight: '500' }}>Candidatures Soumises</p>
+          <p style={{ fontSize: '2.25rem', fontWeight: 'bold', marginTop: '0.5rem', color: '#111827' }}>0</p>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <p className="text-gray-400 text-sm font-medium">Utilisateurs Inscrits</p>
-          <p className="text-4xl font-bold text-emerald-400 mt-2">{totalUsers}</p>
+
+        <div style={{ padding: '1.5rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', backgroundColor: '#ffffff', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)' }}>
+          <p style={{ fontSize: '0.875rem', color: '#6b7280', fontWeight: '500' }}>Utilisateurs Inscrits</p>
+          <p style={{ fontSize: '2.25rem', fontWeight: 'bold', marginTop: '0.5rem', color: '#111827' }}>1</p>
         </div>
       </div>
 
-      {/* Raccourcis & Dernières offres */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold text-white">Dernières Offres Publiées</h2>
-          <Link
-            href="/offres"
-            className="text-sm text-blue-400 hover:text-blue-300 font-medium"
-          >
-            Voir tout →
+      {/* Section Dernières Offres en Tableau */}
+      <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '0.5rem', padding: '1.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Dernières Offres Publiées</h2>
+          <Link href="/offres" style={{ color: '#2563eb', fontSize: '0.875rem', fontWeight: '500', textDecoration: 'none' }}>
+            Voir tout &rarr;
           </Link>
         </div>
 
-        {dernieresOffres.length === 0 ? (
-          <p className="text-gray-400 text-sm">Aucune offre disponible.</p>
+        {loading ? (
+          <p style={{ textAlign: 'center', color: '#6b7280', padding: '1rem' }}>Chargement...</p>
+        ) : offres.length === 0 ? (
+          <p style={{ textAlign: 'center', color: '#6b7280', padding: '1rem' }}>Aucune offre disponible.</p>
         ) : (
-          <div className="space-y-4">
-            {dernieresOffres.map((offre) => (
-              <div
-                key={offre.id}
-                className="flex items-center justify-between p-4 rounded-lg bg-gray-800/40 border border-gray-800"
-              >
-                <div>
-                  <h3 className="font-medium text-white capitalize">{offre.titre}</h3>
-                  <p className="text-sm text-gray-400">{offre.entreprise} • 📍 {offre.localisation}</p>
-                </div>
-                <span className="text-xs text-gray-400">{offre.duree}</span>
-              </div>
-            ))}
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #e5e7eb', backgroundColor: '#f9fafb' }}>
+                  <th style={{ padding: '0.75rem 1rem', fontWeight: '600' }}>Titre du poste</th>
+                  <th style={{ padding: '0.75rem 1rem', fontWeight: '600' }}>Entreprise</th>
+                  <th style={{ padding: '0.75rem 1rem', fontWeight: '600' }}>Localisation</th>
+                  <th style={{ padding: '0.75rem 1rem', fontWeight: '600' }}>Durée</th>
+                </tr>
+              </thead>
+              <tbody>
+                {offres.map((offre) => (
+                  <tr key={offre.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                    <td style={{ padding: '0.75rem 1rem', fontWeight: '600', color: '#111827' }}>{offre.titre}</td>
+                    <td style={{ padding: '0.75rem 1rem', color: '#4b5563' }}>{offre.entreprise}</td>
+                    <td style={{ padding: '0.75rem 1rem', color: '#4b5563' }}>📍 {offre.localisation}</td>
+                    <td style={{ padding: '0.75rem 1rem', color: '#4b5563' }}>⏱️ {offre.duree}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
