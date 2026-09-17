@@ -81,20 +81,20 @@ model Candidature {
 }
 
 model Stage {
-  id            Int         @id @default(autoincrement())
+  id            Int          @id @default(autoincrement())
   dateDebut     DateTime
   dateFin       DateTime
   note          Float?
-  statut        String      @default("EN_COURS")
-  createdAt     DateTime    @default(now())
+  statut        String       @default("EN_COURS")
+  createdAt     DateTime     @default(now())
 
-  etudiant      User        @relation("EtudiantStage", fields: [etudiantId], references: [id])
+  etudiant      User         @relation("EtudiantStage", fields: [etudiantId], references: [id])
   etudiantId    String
-  encadreur     User        @relation("EncadreurStage", fields: [encadreurId], references: [id])
+  encadreur     User         @relation("EncadreurStage", fields: [encadreurId], references: [id])
   encadreurId   String
 
-  candidature   Candidature @relation(fields: [candidatureId], references: [id])
-  candidatureId String      @unique
+  candidature   Candidature  @relation(fields: [candidatureId], references: [id])
+  candidatureId String       @unique
 
   journaux      JournalBord[]
   convention    Convention?
@@ -136,12 +136,10 @@ model Document {
 }
 
 model Notification {
-  id        Int      @id @default(autoincrement())
-  message   String
-  lu        Boolean  @default(false)
-  type      String
-  createdAt DateTime @default(now())
-
-  user      User     @relation(fields: [userId], references: [id])
+  id        String   @id @default(cuid())
   userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message   String   @db.Text
+  lu        Boolean  @default(false)
+  createdAt DateTime @default(now())
 }
