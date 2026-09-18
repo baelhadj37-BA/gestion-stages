@@ -6,6 +6,7 @@ interface Candidature {
   id: string;
   statut: string;
   createdAt: string;
+  cvUrl?: string; // Lien du CV enregistré dans Prisma
   offre?: {
     titre: string;
     entreprise: string;
@@ -23,6 +24,7 @@ export default function CandidaturesPage() {
     const fetchCandidatures = async () => {
       try {
         const res = await fetch('/api/candidatures');
+        if (!res.ok) throw new Error('Erreur réseau');
         const data = await res.json();
         if (isSubscribed && Array.isArray(data)) {
           setCandidatures(data);
@@ -30,9 +32,7 @@ export default function CandidaturesPage() {
       } catch (err) {
         console.error('Erreur lors du chargement des candidatures:', err);
       } finally {
-        if (isSubscribed) {
-          setLoading(false);
-        }
+        if (isSubscribed) setLoading(false);
       }
     };
 
@@ -45,8 +45,10 @@ export default function CandidaturesPage() {
 
   const getBadgeStyle = (statut: string) => {
     switch (statut) {
+      case 'ACCEPTEE':
       case 'ACCEPTE':
         return { backgroundColor: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0' };
+      case 'REFUSEE':
       case 'REFUSE':
         return { backgroundColor: '#fee2e2', color: '#b91c1c', border: '1px solid #fecaca' };
       default:
@@ -78,6 +80,7 @@ export default function CandidaturesPage() {
               <tr style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
                 <th style={{ padding: '0.75rem 1rem' }}>Offre / Poste</th>
                 <th style={{ padding: '0.75rem 1rem' }}>Entreprise</th>
+                <th style={{ padding: '0.75rem 1rem' }}>Document</th>
                 <th style={{ padding: '0.75rem 1rem' }}>Date de demande</th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Statut</th>
               </tr>
@@ -91,6 +94,23 @@ export default function CandidaturesPage() {
                   <td style={{ padding: '0.75rem 1rem', color: '#4b5563' }}>
                     {item.offre?.entreprise || 'Entreprise'}
                   </td>
+
+                  {/* Lien de visionnage du CV */}
+                  <td style={{ padding: '0.75rem 1rem' }}>
+                    {item.cvUrl ? (
+                      <a
+                        href={item.cvUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: '#2563eb', textDecoration: 'underline', fontWeight: '500' }}
+                      >
+                        📄 Voir le CV
+                      </a>
+                    ) : (
+                      <span style={{ color: '#9ca3af' }}>Aucun document</span>
+                    )}
+                  </td>
+
                   <td style={{ padding: '0.75rem 1rem', color: '#6b7280' }}>
                     {item.createdAt ? new Date(item.createdAt).toLocaleDateString('fr-FR') : 'Récemment'}
                   </td>
@@ -105,7 +125,11 @@ export default function CandidaturesPage() {
                         ...getBadgeStyle(item.statut),
                       }}
                     >
-                      {item.statut === 'ACCEPTE' ? 'Acceptée' : item.statut === 'REFUSE' ? 'Refusée' : 'En attente'}
+                      {item.statut === 'ACCEPTEE' || item.statut === 'ACCEPTE'
+                        ? 'Acceptée'
+                        : item.statut === 'REFUSEE' || item.statut === 'REFUSE'
+                        ? 'Refusée'
+                        : 'En attente'}
                     </span>
                   </td>
                 </tr>

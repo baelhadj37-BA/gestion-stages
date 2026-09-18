@@ -1,59 +1,85 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { writeFile, mkdir } from 'fs/promises';
+import path from 'path';
 
-// GET : Récupérer toutes les candidatures
-export async function GET() {
+// 1. Récupérer les candidatures (GET)
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get('userId');
+
+    const whereCondition = userId ? { userId } : {};
+
     const candidatures = await prisma.candidature.findMany({
+      where: whereCondition,
       include: {
-        offre: {
-          select: {
-            titre: true,
-            entreprise: true,
-          },
-        },
+        offre: true,
       },
       orderBy: {
         createdAt: 'desc',
       },
     });
 
-    return NextResponse.json(candidatures, { status: 200 });
+    return NextResponse.json(candidatures);
   } catch (error) {
-    console.error('Erreur lors de la récupération des candidatures :', error);
+    console.error('Erreur GET /api/candidatures:', error);
     return NextResponse.json(
-      { error: 'Erreur lors du chargement des candidatures.' },
+      { error: 'Erreur lors de la récupération des candidatures' },
       { status: 500 }
     );
   }
 }
 
-// POST : Créer une candidature
+// 2. Créer une candidature avec dépôt de fichier CV (POST)
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { offreId, cvUrl } = body;
+    const formData = await request.formData();
+    const offreId = formData.get('offreId') as string;
+    const userId = formData.get('userId') as string | null;
+    const file = formData.get('file') as File | null;
 
-    if (!offreId || !cvUrl) {
+    if (!offreId) {
       return NextResponse.json(
-        { error: 'Champs requis manquants (offreId et cvUrl).' },
+        { error: "L'identifiant de l'offre est requis" },
         { status: 400 }
       );
     }
 
+    let cvUrl = '/uploads/cv-default.pdf';
+
+    // Traitement du fichier téléversé
+    if (file && file.size > 0) {
+      const bytes = await file.arrayBuffer();
+      const buffer = Buffer.from(bytes);
+
+      // Nom de fichier unique pour éviter les collisions
+      const filename = `${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
+      const uploadDir = path.join(process.cwd(), 'public', 'uploads');
+
+      // Création automatique du dossier public/uploads s'il n'existe pas
+      await mkdir(uploadDir, { recursive: true });
+
+      const filePath = path.join(uploadDir, filename);
+      await writeFile(filePath, buffer);
+
+      cvUrl = `/uploads/${filename}`;
+    }
+
+    // Enregistrement dans la base de données
     const candidature = await prisma.candidature.create({
       data: {
         offreId,
         cvUrl,
-        statut: 'EN_ATTENTE',
+        userId: userId || null,
       },
     });
 
     return NextResponse.json(candidature, { status: 201 });
   } catch (error) {
-    console.error('Erreur lors de la création de la candidature :', error);
+    console.error('Erreur POST /api/candidatures:', error);
     return NextResponse.json(
-      { error: 'Erreur serveur lors de la soumission de la candidature.' },
+      { error: 'Impossible de créer la candidature' },
       { status: 500 }
     );
   }
