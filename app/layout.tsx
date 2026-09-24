@@ -49,6 +49,7 @@ export default function RootLayout({
                 fontWeight: 'bold',
                 color: '#2563eb',
                 textDecoration: 'none',
+                outline: 'none',
               }}
             >
               🎓 Gestion des Stages
@@ -62,6 +63,8 @@ export default function RootLayout({
                   textDecoration: 'none',
                   fontWeight: '500',
                   fontSize: '0.95rem',
+                  outline: 'none',
+                  border: 'none',
                 }}
               >
                 Dashboard
@@ -73,6 +76,8 @@ export default function RootLayout({
                   textDecoration: 'none',
                   fontWeight: '500',
                   fontSize: '0.95rem',
+                  outline: 'none',
+                  border: 'none',
                 }}
               >
                 Offres
@@ -84,6 +89,8 @@ export default function RootLayout({
                   textDecoration: 'none',
                   fontWeight: '500',
                   fontSize: '0.95rem',
+                  outline: 'none',
+                  border: 'none',
                 }}
               >
                 Mes Candidatures

@@ -2,21 +2,27 @@
 
 import { useState, useEffect } from 'react';
 
-interface Candidature {
+// 1. Déclaration du type directement ici
+export interface Candidature {
   id: string;
-  statut: string;
+  cvUrl: string;
+  statut: 'EN_ATTENTE' | 'ACCEPTEE' | 'REFUSEE';
   createdAt: string;
-  cvUrl?: string; // Lien du CV enregistré dans Prisma
+  offreId: string;
+  userId?: string | null;
   offre?: {
+    id: string;
     titre: string;
     entreprise: string;
-    lieu: string;
+    localisation: string;
+    duree: string;
   };
 }
 
+// 2. Le composant principal
 export default function CandidaturesPage() {
   const [candidatures, setCandidatures] = useState<Candidature[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
     let isSubscribed = true;
@@ -25,7 +31,8 @@ export default function CandidaturesPage() {
       try {
         const res = await fetch('/api/candidatures');
         if (!res.ok) throw new Error('Erreur réseau');
-        const data = await res.json();
+
+        const data: Candidature[] = await res.json();
         if (isSubscribed && Array.isArray(data)) {
           setCandidatures(data);
         }
@@ -46,10 +53,8 @@ export default function CandidaturesPage() {
   const getBadgeStyle = (statut: string) => {
     switch (statut) {
       case 'ACCEPTEE':
-      case 'ACCEPTE':
         return { backgroundColor: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0' };
       case 'REFUSEE':
-      case 'REFUSE':
         return { backgroundColor: '#fee2e2', color: '#b91c1c', border: '1px solid #fecaca' };
       default:
         return { backgroundColor: '#fef3c7', color: '#b45309', border: '1px solid #fde68a' };
@@ -61,7 +66,7 @@ export default function CandidaturesPage() {
       <div style={{ marginBottom: '2rem' }}>
         <h1 style={{ fontSize: '1.875rem', fontWeight: 'bold' }}>Mes Candidatures</h1>
         <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>
-          Suivez l'état de vos demandes de stage
+          Suivez l'état de vos demandes de stage en temps réel
         </p>
       </div>
 
@@ -80,6 +85,7 @@ export default function CandidaturesPage() {
               <tr style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
                 <th style={{ padding: '0.75rem 1rem' }}>Offre / Poste</th>
                 <th style={{ padding: '0.75rem 1rem' }}>Entreprise</th>
+                <th style={{ padding: '0.75rem 1rem' }}>Localisation</th>
                 <th style={{ padding: '0.75rem 1rem' }}>Document</th>
                 <th style={{ padding: '0.75rem 1rem' }}>Date de demande</th>
                 <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Statut</th>
@@ -89,13 +95,14 @@ export default function CandidaturesPage() {
               {candidatures.map((item) => (
                 <tr key={item.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
                   <td style={{ padding: '0.75rem 1rem', fontWeight: '600' }}>
-                    {item.offre?.titre || 'Stage Développeur'}
+                    {item.offre?.titre || 'Poste non spécifié'}
                   </td>
                   <td style={{ padding: '0.75rem 1rem', color: '#4b5563' }}>
-                    {item.offre?.entreprise || 'Entreprise'}
+                    {item.offre?.entreprise || 'Entreprise non spécifiée'}
                   </td>
-
-                  {/* Lien de visionnage du CV */}
+                  <td style={{ padding: '0.75rem 1rem', color: '#6b7280' }}>
+                    {item.offre?.localisation || '—'}
+                  </td>
                   <td style={{ padding: '0.75rem 1rem' }}>
                     {item.cvUrl ? (
                       <a
@@ -110,7 +117,6 @@ export default function CandidaturesPage() {
                       <span style={{ color: '#9ca3af' }}>Aucun document</span>
                     )}
                   </td>
-
                   <td style={{ padding: '0.75rem 1rem', color: '#6b7280' }}>
                     {item.createdAt ? new Date(item.createdAt).toLocaleDateString('fr-FR') : 'Récemment'}
                   </td>
@@ -125,9 +131,9 @@ export default function CandidaturesPage() {
                         ...getBadgeStyle(item.statut),
                       }}
                     >
-                      {item.statut === 'ACCEPTEE' || item.statut === 'ACCEPTE'
+                      {item.statut === 'ACCEPTEE'
                         ? 'Acceptée'
-                        : item.statut === 'REFUSEE' || item.statut === 'REFUSE'
+                        : item.statut === 'REFUSEE'
                         ? 'Refusée'
                         : 'En attente'}
                     </span>
