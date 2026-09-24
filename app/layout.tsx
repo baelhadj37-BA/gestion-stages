@@ -93,7 +93,7 @@ export default function RootLayout({
                   border: 'none',
                 }}
               >
-                Mes Candidatures
+                Mes Candidatures 
               </Link>
             </nav>
           </div>

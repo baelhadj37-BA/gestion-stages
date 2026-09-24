@@ -2,96 +2,126 @@
 
 import { useState, useEffect } from 'react';
 
-interface NotificationItem {
-  id: string;
+interface Notification {
+  id: number;
   message: string;
-  lu: boolean;
+  lue: boolean;
   createdAt: string;
 }
 
-export default function NotificationBell() {
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [open, setOpen] = useState(false);
+export default function NotificationBell({ userId }: { userId?: number }) {
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
-    fetch('/api/notifications')
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) setNotifications(data);
-      })
-      .catch((err) => console.error(err));
-  }, []);
+    if (userId) fetchNotifications();
+  }, [userId]);
 
-  const nonLuesCount = notifications.filter((n) => !n.lu).length;
+  const fetchNotifications = async () => {
+    try {
+      const res = await fetch(`/api/notifications?userId=${userId}`);
+      const data = await res.json();
+      if (Array.isArray(data)) setNotifications(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const markAllAsRead = async () => {
+    try {
+      await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      setNotifications((prev) => prev.map((n) => ({ ...n, lue: true })));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const nonLues = notifications.filter((n) => !n.lue).length;
 
   return (
     <div style={{ position: 'relative' }}>
       <button
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          setIsOpen(!isOpen);
+          if (!isOpen && nonLues > 0) markAllAsRead();
+        }}
         style={{
           background: 'none',
           border: 'none',
+          fontSize: '1.25rem',
           cursor: 'pointer',
           position: 'relative',
-          fontSize: '1.25rem',
+          padding: '0.5rem',
         }}
       >
         🔔
-        {nonLuesCount > 0 && (
+        {nonLues > 0 && (
           <span
             style={{
               position: 'absolute',
-              top: '-4px',
-              right: '-4px',
+              top: '0px',
+              right: '0px',
               backgroundColor: '#ef4444',
-              color: '#ffffff',
-              borderRadius: '9999px',
+              color: 'white',
+              borderRadius: '50%',
               fontSize: '0.75rem',
-              padding: '0.1rem 0.4rem',
+              width: '18px',
+              height: '18px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               fontWeight: 'bold',
             }}
           >
-            {nonLuesCount}
+            {nonLues}
           </span>
         )}
       </button>
 
-      {open && (
+      {isOpen && (
         <div
           style={{
             position: 'absolute',
             right: 0,
             marginTop: '0.5rem',
-            width: '300px',
+            width: '320px',
             backgroundColor: '#ffffff',
-            border: '1px solid #e5e7eb',
+            border: '1px solid #e2e8f0',
             borderRadius: '0.5rem',
             boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
             zIndex: 50,
-            padding: '0.75rem',
+            maxHeight: '350px',
+            overflowY: 'auto',
           }}
         >
-          <h4 style={{ fontWeight: 'bold', marginBottom: '0.5rem', fontSize: '0.875rem' }}>
+          <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #e2e8f0', fontWeight: 'bold', fontSize: '0.9rem' }}>
             Notifications
-          </h4>
+          </div>
           {notifications.length === 0 ? (
-            <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>Aucune notification.</p>
+            <p style={{ padding: '1rem', color: '#64748b', fontSize: '0.875rem', margin: 0, textAlign: 'center' }}>
+              Aucune notification.
+            </p>
           ) : (
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {notifications.map((n) => (
-                <li
-                  key={n.id}
-                  style={{
-                    padding: '0.5rem 0',
-                    borderBottom: '1px solid #f3f4f6',
-                    fontSize: '0.8125rem',
-                    color: '#374151',
-                  }}
-                >
-                  {n.message}
-                </li>
-              ))}
-            </ul>
+            notifications.map((n) => (
+              <div
+                key={n.id}
+                style={{
+                  padding: '0.75rem 1rem',
+                  borderBottom: '1px solid #f1f5f9',
+                  backgroundColor: n.lue ? '#ffffff' : '#eff6ff',
+                  fontSize: '0.85rem',
+                }}
+              >
+                <p style={{ margin: 0, color: '#1e293b' }}>{n.message}</p>
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                  {new Date(n.createdAt).toLocaleDateString()}
+                </span>
+              </div>
+            ))
           )}
         </div>
       )}

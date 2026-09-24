@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, ChangeEvent } from 'react';
+import { useState, ChangeEvent, useRef } from 'react';
 import toast from 'react-hot-toast';
 
 export default function BoutonPostuler({
@@ -12,6 +12,7 @@ export default function BoutonPostuler({
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handlePostuler = async () => {
     if (!file) {
@@ -30,12 +31,21 @@ export default function BoutonPostuler({
         body: formData,
       });
 
-      if (!res.ok) throw new Error('Erreur réseau');
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Erreur lors de l\'envoi de la candidature');
+      }
 
       toast.success(`Candidature envoyée pour "${titreOffre}" !`);
+      
+      // Réinitialiser le fichier dans le state et dans l'élément HTML
       setFile(null);
-    } catch (err) {
-      toast.error('Impossible de postuler pour le moment.');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Impossible de postuler pour le moment.');
     } finally {
       setIsSubmitting(false);
     }
@@ -44,6 +54,7 @@ export default function BoutonPostuler({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
       <input
+        ref={fileInputRef}
         type="file"
         accept=".pdf,.doc,.docx"
         onChange={(e: ChangeEvent<HTMLInputElement>) =>

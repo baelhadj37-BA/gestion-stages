@@ -7,6 +7,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ================= ENUMS =================
+
 enum Role {
   ETUDIANT
   ENTREPRISE
@@ -34,19 +36,28 @@ enum StatutConvention {
   REJETEE
 }
 
+enum StatutJournal {
+  EN_ATTENTE
+  VALIDE
+  A_CORRIGER
+}
+
+// ================= MODELS =================
+
 model User {
-  id              String         @id @default(cuid())
+  id              String          @id @default(cuid())
   nom             String
-  email           String         @unique
+  email           String          @unique
   password        String
-  role            Role           @default(ETUDIANT)
+  role            Role            @default(ETUDIANT)
   offres          Offre[]
   candidatures    Candidature[]
-  stagesEtudiant  Stage[]        @relation("EtudiantStage")
-  stagesEncadreur Stage[]        @relation("EncadreurStage")
+  stagesEtudiant  Stage[]         @relation("EtudiantStage")
+  stagesEncadreur Stage[]         @relation("EncadreurStage")
   notifications   Notification[]
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  journaux        JournalDeBord[] // Ajout de la relation ici
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 }
 
 model Offre {
@@ -81,36 +92,24 @@ model Candidature {
 }
 
 model Stage {
-  id            Int          @id @default(autoincrement())
+  id            Int             @id @default(autoincrement())
   dateDebut     DateTime
   dateFin       DateTime
   note          Float?
-  statut        String       @default("EN_COURS")
-  createdAt     DateTime     @default(now())
+  statut        String          @default("EN_COURS")
+  createdAt     DateTime        @default(now())
 
-  etudiant      User         @relation("EtudiantStage", fields: [etudiantId], references: [id])
+  etudiant      User            @relation("EtudiantStage", fields: [etudiantId], references: [id])
   etudiantId    String
-  encadreur     User         @relation("EncadreurStage", fields: [encadreurId], references: [id])
+  encadreur     User            @relation("EncadreurStage", fields: [encadreurId], references: [id])
   encadreurId   String
 
-  candidature   Candidature  @relation(fields: [candidatureId], references: [id])
-  candidatureId String       @unique
+  candidature   Candidature     @relation(fields: [candidatureId], references: [id])
+  candidatureId String          @unique
 
-  journaux      JournalBord[]
+  journaux      JournalDeBord[] // Mise à jour pour pointer vers JournalDeBord
   convention    Convention?
   documents     Document[]
-}
-
-model JournalBord {
-  id        Int      @id @default(autoincrement())
-  semaine   Int
-  contenu   String   @db.Text
-  statut    String   @default("EN_ATTENTE")
-  dateDepot DateTime @default(now())
-  alerte    Boolean  @default(false)
-
-  stage     Stage    @relation(fields: [stageId], references: [id])
-  stageId   Int
 }
 
 model Convention {
@@ -142,4 +141,23 @@ model Notification {
   message   String   @db.Text
   lu        Boolean  @default(false)
   createdAt DateTime @default(now())
+}
+
+// Fusion des deux modèles de journal en un seul correct
+model JournalDeBord {
+  id          String        @id @default(uuid())
+  semaine     Int
+  activites   String        @db.Text
+  statut      StatutJournal @default(EN_ATTENTE)
+  commentaire String?       @db.Text
+  alerte      Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  stageId     Int?          // Corrigé : Int? pour correspondre à l'id du modèle Stage
+  stage       Stage?        @relation(fields: [stageId], references: [id], onDelete: Cascade)
 }
