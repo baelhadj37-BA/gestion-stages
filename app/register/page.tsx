@@ -391,7 +391,7 @@ export default function RegisterPage() {
               backgroundImage:
                 "linear-gradient(90deg, rgba(10,58,150,0.94) 0%, rgba(12,70,170,0.80) 38%, rgba(14,80,190,0.25) 66%, rgba(14,80,190,0) 100%)," +
                 "linear-gradient(180deg, rgba(14,76,182,0.35) 0%, rgba(14,76,182,0) 30%, rgba(8,40,110,0) 68%, rgba(8,40,110,0.85) 100%)," +
-                "url('/login-hero.jpg')",
+                "url('/login-hero.png')",
               backgroundSize: 'cover',
               backgroundPosition: '40% 60%',
             }}
