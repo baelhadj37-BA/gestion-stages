@@ -21,6 +21,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 2bis. Vérifier que le rôle demandé est autorisé en auto-inscription
+    // ADMIN et ENCADREUR ne doivent JAMAIS être créés via ce formulaire public —
+    // sinon n'importe qui peut s'auto-attribuer un rôle privilégié en appelant
+    // l'API directement (le formulaire ne protège rien côté serveur).
+    const rolesAutorises = ['ETUDIANT', 'ENTREPRISE']
+    if (!rolesAutorises.includes(role)) {
+      return NextResponse.json(
+        { message: 'Rôle invalide pour une inscription publique' },
+        { status: 400 }
+      )
+    }
+
     // 3. Vérifier si l'email existe déjà dans la base de données
     const utilisateurExistant = await prisma.user.findUnique({
       where: { email }

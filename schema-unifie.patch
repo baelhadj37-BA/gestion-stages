@@ -1,0 +1,466 @@
+From 77055070cdababdf28c0021520f238fc6fbf681b Mon Sep 17 00:00:00 2001
+From: El Hadji Abdoulaye Ba <abdoulaye@ipd.local>
+Date: Thu, 10 Sep 2026 20:46:54 +0000
+Subject: [PATCH] chore(schema): unification du schema Prisma + adaptation
+ module offres + fix middleware
+
+---
+ app/api/offres/route.ts       |  93 ++++++++++++++++++++++++
+ app/offres/BoutonPostuler.tsx |  54 ++++++++++++++
+ app/offres/creer/page.tsx     | 132 ++++++++++++++++++++++++++++++++++
+ app/offres/page.tsx           |  80 +++++++++++++++++++++
+ proxy.ts => middleware.ts     |   2 +-
+ prisma/schema.prisma          |  18 +++--
+ 6 files changed, 372 insertions(+), 7 deletions(-)
+ create mode 100644 app/api/offres/route.ts
+ create mode 100644 app/offres/BoutonPostuler.tsx
+ create mode 100644 app/offres/creer/page.tsx
+ create mode 100644 app/offres/page.tsx
+ rename proxy.ts => middleware.ts (96%)
+
+diff --git a/app/api/offres/route.ts b/app/api/offres/route.ts
+new file mode 100644
+index 0000000..a1df0b3
+--- /dev/null
++++ b/app/api/offres/route.ts
+@@ -0,0 +1,93 @@
++import { NextRequest, NextResponse } from 'next/server';
++import { prisma } from '@/lib/prisma';
++import { verifierToken } from '@/lib/auth';
++
++// ─────────────────────────────────────────
++// GET /api/offres — Recherche et filtrage (section 3.2 du CDC)
++// Query params: ?domaine=&duree=&localisation=&tag=
++// Un étudiant ne voit que les offres PUBLIEE (déjà validées par l'admin)
++// ─────────────────────────────────────────
++export async function GET(request: NextRequest) {
++  try {
++    const { searchParams } = new URL(request.url);
++    const localisation = searchParams.get('localisation');
++    const duree = searchParams.get('duree');
++    const tag = searchParams.get('tag');
++
++    const authHeader = request.headers.get('authorization');
++    const token = authHeader?.replace('Bearer ', '');
++    const tokenData = token ? verifierToken(token) : null;
++
++    // Un admin ou une entreprise peut voir toutes les offres (y compris EN_ATTENTE) ;
++    // les autres (étudiant, visiteur) ne voient que les offres publiées.
++    const voitTout = tokenData?.role === 'ADMIN' || tokenData?.role === 'ENTREPRISE';
++
++    const offres = await prisma.offre.findMany({
++      where: {
++        ...(voitTout ? {} : { statut: 'PUBLIEE' }),
++        ...(localisation ? { localisation: { contains: localisation } } : {}),
++        ...(duree ? { duree: { contains: duree } } : {}),
++        ...(tag ? { tags: { contains: tag } } : {}),
++      },
++      include: {
++        entreprise: { select: { id: true, nom: true, secteur: true } },
++      },
++      orderBy: { createdAt: 'desc' },
++    });
++
++    return NextResponse.json(offres);
++  } catch (error) {
++    console.error('Erreur récupération offres:', error);
++    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
++  }
++}
++
++// ─────────────────────────────────────────
++// POST /api/offres — Publication par une entreprise (section 3.2)
++// L'offre est créée avec statut = EN_ATTENTE, en attente de validation admin
++// ─────────────────────────────────────────
++export async function POST(request: NextRequest) {
++  try {
++    const authHeader = request.headers.get('authorization');
++    const token = authHeader?.replace('Bearer ', '');
++    const tokenData = token ? verifierToken(token) : null;
++
++    if (!tokenData) {
++      return NextResponse.json({ error: 'Connexion requise' }, { status: 401 });
++    }
++    if (tokenData.role !== 'ENTREPRISE' && tokenData.role !== 'ADMIN') {
++      return NextResponse.json(
++        { error: 'Seule une entreprise peut publier une offre' },
++        { status: 403 }
++      );
++    }
++
++    const body = await request.json();
++    const { titre, description, localisation, duree, tags } = body;
++
++    if (!titre || !description || !localisation || !duree) {
++      return NextResponse.json(
++        { error: 'Veuillez remplir tous les champs obligatoires.' },
++        { status: 400 }
++      );
++    }
++
++    const nouvelleOffre = await prisma.offre.create({
++      data: {
++        titre,
++        description,
++        localisation,
++        duree,
++        tags: tags || '',
++        entrepriseId: tokenData.userId,
++        statut: 'EN_ATTENTE', // validation admin requise avant publication (3.2)
++      },
++    });
++
++    return NextResponse.json(nouvelleOffre, { status: 201 });
++  } catch (error: unknown) {
++    console.error("Erreur lors de la création de l'offre:", error);
++    const errorMessage = error instanceof Error ? error.message : String(error);
++    return NextResponse.json({ error: `Erreur serveur: ${errorMessage}` }, { status: 500 });
++  }
++}
+diff --git a/app/offres/BoutonPostuler.tsx b/app/offres/BoutonPostuler.tsx
+new file mode 100644
+index 0000000..7491c3b
+--- /dev/null
++++ b/app/offres/BoutonPostuler.tsx
+@@ -0,0 +1,54 @@
++'use client';
++
++import { useState } from 'react';
++
++interface BoutonPostulerProps {
++  offreId: number;
++}
++
++export default function BoutonPostuler({ offreId }: BoutonPostulerProps) {
++  const [loading, setLoading] = useState(false);
++  const [postule, setPostule] = useState(false);
++
++  const handlePostuler = async () => {
++    setLoading(true);
++
++    try {
++      const res = await fetch('/api/candidatures', {
++        method: 'POST',
++        headers: {
++          'Content-Type': 'application/json',
++        },
++        body: JSON.stringify({ offreId }),
++      });
++
++      const data = await res.json();
++
++      if (!res.ok) {
++        alert(data.error || 'Erreur lors de la candidature.');
++        return;
++      }
++
++      setPostule(true);
++      alert('Candidature envoyée avec succès !');
++    } catch {
++      alert("Une erreur s'est produite lors de la candidature.");
++    } finally {
++      setLoading(false);
++    }
++  };
++
++  return (
++    <button
++      onClick={handlePostuler}
++      disabled={loading || postule}
++      className={`text-xs font-medium px-3.5 py-2 rounded-lg transition border ${
++        postule
++          ? 'bg-green-900/50 text-green-300 border-green-700 cursor-not-allowed'
++          : 'bg-gray-800 hover:bg-blue-600 text-white border-gray-700 hover:border-blue-500 disabled:opacity-50'
++      }`}
++    >
++      {loading ? 'Envoi...' : postule ? 'Postulé ✓' : 'Postuler'}
++    </button>
++  );
++}
+\ No newline at end of file
+diff --git a/app/offres/creer/page.tsx b/app/offres/creer/page.tsx
+new file mode 100644
+index 0000000..bd3e178
+--- /dev/null
++++ b/app/offres/creer/page.tsx
+@@ -0,0 +1,132 @@
++'use client';
++
++import { useRouter } from 'next/navigation';
++import { useState } from 'react';
++
++export default function CreerOffrePage() {
++  const router = useRouter();
++  const [loading, setLoading] = useState(false);
++  const [error, setError] = useState<string | null>(null);
++
++  const [formData, setFormData] = useState({
++    titre: '',
++    description: '',
++    localisation: '',
++    duree: '',
++    tags: '',
++  });
++
++  const handleSubmit = async (e: React.FormEvent) => {
++    e.preventDefault();
++    setLoading(true);
++    setError(null);
++
++    try {
++      const token = localStorage.getItem('token');
++
++      const res = await fetch('/api/offres', {
++        method: 'POST',
++        headers: {
++          'Content-Type': 'application/json',
++          ...(token ? { Authorization: `Bearer ${token}` } : {}),
++        },
++        body: JSON.stringify(formData),
++      });
++
++      const data = await res.json();
++
++      if (!res.ok) {
++        throw new Error(data.error || "Erreur lors de la création de l'offre");
++      }
++
++      router.push('/offres');
++      router.refresh();
++    } catch (err: unknown) {
++      if (err instanceof Error) {
++        setError(err.message);
++      } else {
++        setError("Une erreur s'est produite.");
++      }
++    } finally {
++      setLoading(false);
++    }
++  };
++
++  return (
++    <div className="max-w-2xl mx-auto p-6">
++      <h1 className="text-2xl font-bold text-white mb-6">Créer une nouvelle offre</h1>
++
++      {error && (
++        <div className="bg-red-900/50 border border-red-500 text-red-200 p-3 rounded mb-4 text-sm">
++          {error}
++        </div>
++      )}
++
++      <form onSubmit={handleSubmit} className="flex flex-col gap-4 bg-gray-900 p-6 rounded-xl border border-gray-800">
++        <div>
++          <label className="block text-sm text-gray-300 mb-1">{"Titre de l'offre"}</label>
++          <input
++            type="text"
++            required
++            className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white focus:outline-none focus:border-blue-500"
++            value={formData.titre}
++            onChange={(e) => setFormData({ ...formData, titre: e.target.value })}
++          />
++        </div>
++
++        <div>
++          <label className="block text-sm text-gray-300 mb-1">Localisation</label>
++          <input
++            type="text"
++            required
++            className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white focus:outline-none focus:border-blue-500"
++            value={formData.localisation}
++            onChange={(e) => setFormData({ ...formData, localisation: e.target.value })}
++          />
++        </div>
++
++        <div>
++          <label className="block text-sm text-gray-300 mb-1">Durée</label>
++          <input
++            type="text"
++            placeholder="ex: 3 mois"
++            required
++            className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white focus:outline-none focus:border-blue-500"
++            value={formData.duree}
++            onChange={(e) => setFormData({ ...formData, duree: e.target.value })}
++          />
++        </div>
++
++        <div>
++          <label className="block text-sm text-gray-300 mb-1">Mots-clés / Tags (séparés par une virgule)</label>
++          <input
++            type="text"
++            placeholder="ex: React, Next.js, MySQL"
++            className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white focus:outline-none focus:border-blue-500"
++            value={formData.tags}
++            onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
++          />
++        </div>
++
++        <div>
++          <label className="block text-sm text-gray-300 mb-1">Description</label>
++          <textarea
++            rows={4}
++            required
++            className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white focus:outline-none focus:border-blue-500"
++            value={formData.description}
++            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
++          />
++        </div>
++
++        <button
++          type="submit"
++          disabled={loading}
++          className="bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 rounded-lg mt-2 transition disabled:opacity-50"
++        >
++          {loading ? 'Enregistrement en cours...' : "Enregistrer l'offre"}
++        </button>
++      </form>
++    </div>
++  );
++}
+diff --git a/app/offres/page.tsx b/app/offres/page.tsx
+new file mode 100644
+index 0000000..6853f4b
+--- /dev/null
++++ b/app/offres/page.tsx
+@@ -0,0 +1,80 @@
++import { prisma } from '@/lib/prisma';
++import Link from 'next/link';
++import BoutonPostuler from './BoutonPostuler';
++
++export const revalidate = 0;
++
++export default async function OffresPage() {
++  const offres = await prisma.offre.findMany({
++    where: { statut: 'PUBLIEE' },
++    include: {
++      entreprise: { select: { nom: true, secteur: true } },
++    },
++    orderBy: { createdAt: 'desc' },
++  });
++
++  return (
++    <div className="max-w-6xl mx-auto p-6">
++      <div className="flex justify-between items-center mb-8">
++        <div>
++          <h1 className="text-3xl font-bold text-white">Offres de Stages</h1>
++          <p className="text-gray-400 text-sm mt-1">
++            Découvrez et postulez aux dernières opportunités
++          </p>
++        </div>
++        <Link
++          href="/offres/creer"
++          className="bg-blue-600 hover:bg-blue-500 text-white font-medium px-4 py-2.5 rounded-lg transition"
++        >
++          + Créer une offre
++        </Link>
++      </div>
++
++      {offres.length === 0 ? (
++        <div className="text-center py-12 bg-gray-900 rounded-xl border border-gray-800">
++          <p className="text-gray-400">Aucune offre disponible pour le moment.</p>
++        </div>
++      ) : (
++        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
++          {offres.map((offre) => (
++            <div
++              key={offre.id}
++              className="bg-gray-900 border border-gray-800 rounded-xl p-5 flex flex-col justify-between hover:border-gray-700 transition"
++            >
++              <div>
++                <div className="flex justify-between items-start mb-2">
++                  <h2 className="text-xl font-semibold text-white capitalize">
++                    {offre.titre}
++                  </h2>
++                  {offre.tags && (
++                    <span className="bg-blue-950/60 text-blue-400 text-xs px-2.5 py-1 rounded-full border border-blue-800">
++                      {offre.tags}
++                    </span>
++                  )}
++                </div>
++
++                <p className="text-blue-400 text-sm font-medium mb-3">
++                  🏢 {offre.entreprise.nom}
++                  {offre.entreprise.secteur ? ` — ${offre.entreprise.secteur}` : ''}
++                </p>
++
++                <p className="text-gray-400 text-sm line-clamp-3 mb-4">
++                  {offre.description}
++                </p>
++              </div>
++
++              <div className="pt-4 border-t border-gray-800 flex items-center justify-between mt-auto">
++                <div className="text-xs text-gray-400 flex flex-col gap-1">
++                  <span>📍 {offre.localisation}</span>
++                  <span>⏱️ {offre.duree}</span>
++                </div>
++
++                <BoutonPostuler offreId={offre.id} />
++              </div>
++            </div>
++          ))}
++        </div>
++      )}
++    </div>
++  );
++}
+diff --git a/proxy.ts b/middleware.ts
+similarity index 96%
+rename from proxy.ts
+rename to middleware.ts
+index 7009281..4a57ec9 100644
+--- a/proxy.ts
++++ b/middleware.ts
+@@ -14,7 +14,7 @@ const routesPubliques = [
+   '/register',
+ ]
+ 
+-export function proxy(request: NextRequest) {
++export function middleware(request: NextRequest) {
+   const { pathname } = request.nextUrl
+ 
+   // 1. Si la route est publique → laisser passer
+diff --git a/prisma/schema.prisma b/prisma/schema.prisma
+index 06cd405..f87573a 100644
+--- a/prisma/schema.prisma
++++ b/prisma/schema.prisma
+@@ -105,12 +105,14 @@ model Stage {
+ }
+ 
+ model JournalBord {
+-  id        Int      @id @default(autoincrement())
+-  semaine   Int
+-  contenu   String   @db.Text
+-  statut    String   @default("EN_ATTENTE")
+-  dateDepot DateTime @default(now())
+-  alerte    Boolean  @default(false)
++  id             Int       @id @default(autoincrement())
++  semaine        Int
++  contenu        String    @db.Text
++  statut         String    @default("EN_ATTENTE")
++  dateDepot      DateTime  @default(now())
++  alerte         Boolean   @default(false)
++  commentaire    String?   @db.Text
++  dateValidation DateTime?
+ 
+   stage   Stage @relation(fields: [stageId], references: [id])
+   stageId Int
+@@ -120,6 +122,8 @@ model Convention {
+   id             Int              @id @default(autoincrement())
+   statut         StatutConvention @default(ETAPE_ETUDIANT)
+   pdfUrl         String?
++  uuid           String?          @unique
++  qrCodeUrl      String?
+   motifRejet     String?
+   dateValidation DateTime?
+   createdAt      DateTime         @default(now())
+@@ -132,6 +136,8 @@ model Document {
+   id             Int      @id @default(autoincrement())
+   type           String
+   pdfUrl         String
++  uuid           String   @unique @default(uuid())
++  qrCodeUrl      String?
+   dateGeneration DateTime @default(now())
+ 
+   stage   Stage @relation(fields: [stageId], references: [id])
+-- 
+2.43.0
+
