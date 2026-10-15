@@ -1,144 +1,101 @@
-// app/api/candidatures/route.ts
-// GET  — Mes candidatures (étudiant) ou candidatures reçues (entreprise)
-// POST — Postuler à une offre (étudiant uniquement)
-
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifierToken } from '@/lib/auth'
 
-// ─── GET /api/candidatures ─────────────────────────────────────
 export async function GET(request: NextRequest) {
   try {
     const token = request.headers.get('authorization')?.replace('Bearer ', '')
     const tokenData = verifierToken(token || '')
+    if (!tokenData) return NextResponse.json({ message: 'Non autorisé' }, { status: 401 })
 
-    if (!tokenData) {
-      return NextResponse.json({ message: 'Non autorisé' }, { status: 401 })
-    }
-
-    let candidatures
+    const where: any = {}
+    const include: any = { offre: true }
 
     if (tokenData.role === 'ETUDIANT') {
-      // L'étudiant voit ses propres candidatures
-      candidatures = await prisma.candidature.findMany({
-        where: { etudiantId: tokenData.userId },
-        orderBy: { createdAt: 'desc' },
-        include: {
-          offre: {
-            select: {
-              id: true,
-              titre: true,
-              domaine: true,
-              duree: true,
-              entreprise: { select: { id: true, nom: true } },
-            }
-          }
-        }
-      })
+      where.etudiantId = tokenData.userId
     } else if (tokenData.role === 'ENTREPRISE') {
-      // L'entreprise voit les candidatures sur ses offres
-      candidatures = await prisma.candidature.findMany({
-        where: { offre: { entrepriseId: tokenData.userId } },
-        orderBy: { createdAt: 'desc' },
-        include: {
-          offre: { select: { id: true, titre: true } },
-          etudiant: { select: { id: true, nom: true, prenom: true, email: true } },
-        }
-      })
+      where.offre = { entrepriseId: tokenData.userId }
+      include.etudiant = { select: { id: true, nom: true, prenom: true, email: true } }
     } else if (tokenData.role === 'ADMIN') {
-      // L'admin voit toutes les candidatures
-      candidatures = await prisma.candidature.findMany({
-        orderBy: { createdAt: 'desc' },
-        include: {
-          offre: {
-            select: {
-              id: true,
-              titre: true,
-              entreprise: { select: { id: true, nom: true } },
-            }
-          },
-          etudiant: { select: { id: true, nom: true, prenom: true, email: true } },
-        }
-      })
+      include.etudiant = { select: { id: true, nom: true, prenom: true, email: true } }
     } else {
       return NextResponse.json({ message: 'Accès non autorisé' }, { status: 403 })
     }
 
-    return NextResponse.json({
-      message: 'Candidatures récupérées avec succès',
-      candidatures,
-      total: candidatures.length,
+    const candidatures = await (prisma.candidature as any).findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include,
     })
 
+    return NextResponse.json({ candidatures, total: candidatures.length })
   } catch (error) {
     console.error('Erreur GET /api/candidatures:', error)
     return NextResponse.json({ message: 'Erreur serveur' }, { status: 500 })
   }
 }
 
-// ─── POST /api/candidatures ────────────────────────────────────
 export async function POST(request: NextRequest) {
   try {
     const token = request.headers.get('authorization')?.replace('Bearer ', '')
     const tokenData = verifierToken(token || '')
-
-    if (!tokenData || tokenData.role !== 'ETUDIANT') {
-      return NextResponse.json(
-        { message: 'Réservé aux étudiants' },
-        { status: 403 }
-      )
-    }
+    if (!tokenData || tokenData.role !== 'ETUDIANT')
+      return NextResponse.json({ message: 'Réservé aux étudiants' }, { status: 403 })
 
     const body = await request.json()
-    const { offreId, lettreMotivation, cv } = body
+    const { offreId, lettreUrl, cvUrl } = body
 
-    if (!offreId || !lettreMotivation) {
-      return NextResponse.json(
-        { message: 'offreId et lettreMotivation sont obligatoires' },
-        { status: 400 }
-      )
-    }
+    if (!offreId || !cvUrl)
+      return NextResponse.json({ message: 'offreId et cvUrl sont obligatoires' }, { status: 400 })
 
-    // Vérifier que l'offre existe et est publiée
-    const offre = await prisma.offre.findUnique({ where: { id: parseInt(offreId) } })
-    if (!offre) {
-      return NextResponse.json({ message: 'Offre introuvable' }, { status: 404 })
-    }
-    if (offre.statut !== 'PUBLIEE') {
-      return NextResponse.json({ message: 'Cette offre n\'est plus disponible' }, { status: 400 })
-    }
+    const offre = await (prisma.offre as any).findUnique({ where: { id: Number(offreId) } })
+    if (!offre) return NextResponse.json({ message: 'Offre introuvable' }, { status: 404 })
+    if (offre.statut !== 'PUBLIEE')
+      return NextResponse.json({ message: "Cette offre n'est plus disponible" }, { status: 400 })
 
-    // Vérifier que l'étudiant n'a pas déjà postulé
-    const dejaPostule = await prisma.candidature.findFirst({
-      where: { offreId: parseInt(offreId), etudiantId: tokenData.userId }
+    const dejaPostule = await (prisma.candidature as any).findFirst({
+      where: { offreId: Number(offreId), etudiantId: tokenData.userId },
     })
-    if (dejaPostule) {
-      return NextResponse.json(
-        { message: 'Vous avez déjà postulé à cette offre' },
-        { status: 409 }
-      )
-    }
+    if (dejaPostule)
+      return NextResponse.json({ message: 'Vous avez déjà postulé à cette offre' }, { status: 409 })
 
-    const candidature = await prisma.candidature.create({
+    const candidature = await (prisma.candidature as any).create({
       data: {
-        offreId:          parseInt(offreId),
-        etudiantId:       tokenData.userId,
-        lettreMotivation: lettreMotivation.trim(),
-        cv:               cv?.trim() || null,
-        statut:           'EN_ATTENTE',
+        offreId: Number(offreId),
+        etudiantId: tokenData.userId,
+        cvUrl: String(cvUrl).trim(),
+        lettreUrl: lettreUrl ? String(lettreUrl).trim() : null,
+        statut: 'EN_ATTENTE',
       },
-      include: {
-        offre: { select: { titre: true, entreprise: { select: { nom: true } } } }
-      }
     })
 
-    return NextResponse.json(
-      { message: 'Candidature envoyée avec succès', candidature },
-      { status: 201 }
-    )
-
+    return NextResponse.json({ message: 'Candidature envoyée avec succès', candidature }, { status: 201 })
   } catch (error) {
     console.error('Erreur POST /api/candidatures:', error)
+    return NextResponse.json({ message: 'Erreur serveur' }, { status: 500 })
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const token = request.headers.get('authorization')?.replace('Bearer ', '')
+    const tokenData = verifierToken(token || '')
+    if (!tokenData || !['ENTREPRISE', 'ADMIN'].includes(tokenData.role))
+      return NextResponse.json({ message: 'Accès refusé' }, { status: 403 })
+
+    const { id, statut } = await request.json()
+    if (!id || !['EN_ATTENTE', 'ACCEPTEE', 'REFUSEE'].includes(statut))
+      return NextResponse.json({ message: 'Données invalides' }, { status: 400 })
+
+    const candidature = await (prisma.candidature as any).update({
+      where: { id: Number(id) },
+      data: { statut },
+    })
+
+    return NextResponse.json({ candidature })
+  } catch (error) {
+    console.error('Erreur PATCH /api/candidatures:', error)
     return NextResponse.json({ message: 'Erreur serveur' }, { status: 500 })
   }
 }

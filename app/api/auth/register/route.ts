@@ -1,76 +1,42 @@
-// app/api/auth/register/route.ts
-// Cette route gère l'inscription d'un nouvel utilisateur
-// Méthode : POST
-// URL : /api/auth/register
-
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { chiffrerMotDePasse, creerToken } from '@/lib/auth'
+import bcrypt from 'bcryptjs'
 
 export async function POST(request: NextRequest) {
   try {
-    // 1. Récupérer les données envoyées par le formulaire
     const body = await request.json()
-    const { nom, prenom, email, motDePasse, role } = body
+    const { nom, prenom, email, password, role, secteur, telephone } = body
 
-    // 2. Vérifier que tous les champs obligatoires sont remplis
-    if (!nom || !prenom || !email || !motDePasse || !role) {
+    if (!nom || !prenom || !email || !password || !role)
       return NextResponse.json(
-        { message: 'Tous les champs sont obligatoires' },
+        { message: 'Champs obligatoires : nom, prenom, email, password, role' },
         { status: 400 }
       )
-    }
 
-    // 3. Vérifier si l'email existe déjà dans la base de données
-    const utilisateurExistant = await prisma.user.findUnique({
-      where: { email }
-    })
+    const exist = await prisma.user.findUnique({ where: { email } })
+    if (exist)
+      return NextResponse.json({ message: 'Email déjà utilisé' }, { status: 409 })
 
-    if (utilisateurExistant) {
-      return NextResponse.json(
-        { message: 'Cet email est déjà utilisé' },
-        { status: 400 }
-      )
-    }
+    const hashedPassword = await bcrypt.hash(password, 10)
 
-    // 4. Chiffrer le mot de passe avant de le sauvegarder
-    const motDePasseChiffre = await chiffrerMotDePasse(motDePasse)
-
-    // 5. Créer l'utilisateur dans la base de données
-    const nouvelUtilisateur = await prisma.user.create({
+    const user = await prisma.user.create({
       data: {
         nom,
         prenom,
         email,
-        motDePasse: motDePasseChiffre,
-        role
-      }
+        password: hashedPassword,
+        role,
+        secteur: secteur || null,
+        telephone: telephone || null,
+      },
     })
 
-    // 6. Créer un token JWT
-    const token = creerToken(nouvelUtilisateur.id, nouvelUtilisateur.role)
-
-    // 7. Retourner le token et les infos
     return NextResponse.json(
-      {
-        message: 'Inscription réussie',
-        token,
-        utilisateur: {
-          id: nouvelUtilisateur.id,
-          nom: nouvelUtilisateur.nom,
-          prenom: nouvelUtilisateur.prenom,
-          email: nouvelUtilisateur.email,
-          role: nouvelUtilisateur.role
-        }
-      },
+      { message: 'Compte créé avec succès', user: { id: user.id, email: user.email, role: user.role } },
       { status: 201 }
     )
-
   } catch (error) {
-    console.error('Erreur inscription:', error)
-    return NextResponse.json(
-      { message: 'Erreur serveur' },
-      { status: 500 }
-    )
+    console.error('Erreur POST /api/auth/register:', error)
+    return NextResponse.json({ message: 'Erreur serveur' }, { status: 500 })
   }
 }
