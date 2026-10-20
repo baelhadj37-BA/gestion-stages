@@ -35,73 +35,65 @@ enum StatutConvention {
 }
 
 model User {
-  id          Int      @id @default(autoincrement())
-  nom         String
-  prenom      String
-  email       String   @unique
-  motDePasse  String
-  role        Role
-  competences String?
-  matricule   String?
-  classe      String?
-  secteur     String?
-  createdAt   DateTime @default(now())
-
+  id              String         @id @default(cuid())
+  nom             String
+  email           String         @unique
+  password        String
+  role            Role           @default(ETUDIANT)
   offres          Offre[]
   candidatures    Candidature[]
-  stagesEtudiant  Stage[] @relation("EtudiantStage")
-  stagesEncadreur Stage[] @relation("EncadreurStage")
+  stagesEtudiant  Stage[]        @relation("EtudiantStage")
+  stagesEncadreur Stage[]        @relation("EncadreurStage")
   notifications   Notification[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 }
 
 model Offre {
-  id           Int         @id @default(autoincrement())
+  id           String        @id @default(cuid())
   titre        String
-  description  String      @db.Text
-  duree        String
+  entreprise   String
+  description  String        @db.Text
   localisation String
-  tags         String
-  statut       StatutOffre @default(EN_ATTENTE)
-  createdAt    DateTime    @default(now())
-
-  entreprise   User          @relation(fields: [entrepriseId], references: [id])
-  entrepriseId Int
+  duree        String
+  tags         String?
+  userId       String?
+  user         User?         @relation(fields: [userId], references: [id])
   candidatures Candidature[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 }
 
 model Candidature {
-  id        Int               @id @default(autoincrement())
-  cvUrl     String
-  lettreUrl String?
+  id        String            @id @default(cuid())
   statut    StatutCandidature @default(EN_ATTENTE)
-  score     Int               @default(0)
+  userId    String
+  user      User              @relation(fields: [userId], references: [id])
+  offreId   String
+  offre     Offre             @relation(fields: [offreId], references: [id])
+  stage     Stage?
   createdAt DateTime          @default(now())
-
-  etudiant     User   @relation(fields: [etudiantId], references: [id])
-  etudiantId   Int
-  offre        Offre  @relation(fields: [offreId], references: [id])
-  offreId      Int
-  stage        Stage?
+  updatedAt DateTime          @updatedAt
 }
 
 model Stage {
-  id           Int      @id @default(autoincrement())
-  dateDebut    DateTime
-  dateFin      DateTime
-  note         Float?
-  statut       String   @default("EN_COURS")
-  createdAt    DateTime @default(now())
+  id            Int         @id @default(autoincrement())
+  dateDebut     DateTime
+  dateFin       DateTime
+  note          Float?
+  statut        String      @default("EN_COURS")
+  createdAt     DateTime    @default(now())
 
   etudiant      User        @relation("EtudiantStage", fields: [etudiantId], references: [id])
-  etudiantId    Int
+  etudiantId    String
   encadreur     User        @relation("EncadreurStage", fields: [encadreurId], references: [id])
-  encadreurId   Int
+  encadreurId   String
   candidature   Candidature @relation(fields: [candidatureId], references: [id])
-  candidatureId Int         @unique
+  candidatureId String      @unique
 
-  journaux   JournalBord[]
-  convention Convention?
-  documents  Document[]
+  journaux      JournalBord[]
+  convention    Convention?
+  documents     Document[]
 }
 
 model JournalBord {
@@ -112,8 +104,8 @@ model JournalBord {
   dateDepot DateTime @default(now())
   alerte    Boolean  @default(false)
 
-  stage   Stage @relation(fields: [stageId], references: [id])
-  stageId Int
+  stage     Stage    @relation(fields: [stageId], references: [id])
+  stageId   Int
 }
 
 model Convention {
@@ -124,8 +116,8 @@ model Convention {
   dateValidation DateTime?
   createdAt      DateTime         @default(now())
 
-  stage   Stage @relation(fields: [stageId], references: [id])
-  stageId Int   @unique
+  stage          Stage            @relation(fields: [stageId], references: [id])
+  stageId        Int              @unique
 }
 
 model Document {
@@ -134,8 +126,8 @@ model Document {
   pdfUrl         String
   dateGeneration DateTime @default(now())
 
-  stage   Stage @relation(fields: [stageId], references: [id])
-  stageId Int
+  stage          Stage    @relation(fields: [stageId], references: [id])
+  stageId        Int
 }
 
 model Notification {
@@ -145,6 +137,6 @@ model Notification {
   type      String
   createdAt DateTime @default(now())
 
-  user   User @relation(fields: [userId], references: [id])
-  userId Int
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
 }
