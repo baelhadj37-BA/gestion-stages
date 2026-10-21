@@ -18,15 +18,34 @@ export async function GET(req: NextRequest) {
   }
 
   const conventions = await prisma.convention.findMany({
-    where: { statut: "ETAPE_ENTREPRISE" },
+    where: {
+      statut: { in: ["ETAPE_ETUDIANT", "ETAPE_ENTREPRISE"] },
+    },
     include: {
       stage: {
         include: {
-          etudiant: { select: { nom: true, prenom: true } },
-          candidature: { include: { offre: { include: { entreprise: { select: { nom: true } } } } } },
+          etudiant: {
+            select: {
+              nom: true,
+              prenom: true,
+              matricule: true,
+              classe: true,
+              email: true,
+            },
+          },
+          candidature: {
+            include: {
+              offre: {
+                include: {
+                  entreprise: { select: { nom: true } },
+                },
+              },
+            },
+          },
         },
       },
     },
+    orderBy: { createdAt: "desc" },
   });
 
   return NextResponse.json(conventions);

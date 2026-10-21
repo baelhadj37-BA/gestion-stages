@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { verifierToken } from "@/lib/auth";
+import { notifierUtilisateur } from "@/lib/notifications";
 
 const prisma = new PrismaClient();
 
@@ -53,6 +54,28 @@ export async function PATCH(
       where: { id },
       data: { statut, commentaire: commentaire ?? null, dateValidation: new Date() },
     });
+
+    if (statut === "REJETE") {
+      await notifierUtilisateur(
+        journal.stage.etudiantId,
+        `Ton rapport de la semaine ${journal.semaine} a été rejeté. ${commentaire ? `Commentaire : ${commentaire}` : "Tu peux le corriger et le renvoyer."}`,
+        "JOURNAL_REJETE"
+      );
+    } else {
+      await notifierUtilisateur(
+        journal.stage.etudiantId,
+        `Ton rapport de la semaine ${journal.semaine} a été validé avec succès par l'entreprise.`,
+        "JOURNAL_VALIDE"
+      );
+    }
+
+    if (journal.stage.encadreurId && journal.stage.encadreurId !== user.userId) {
+      await notifierUtilisateur(
+        journal.stage.encadreurId,
+        `Le rapport de la semaine ${journal.semaine} (Stage #${journal.stage.id}) a été ${statut === "VALIDE" ? "validé" : "rejeté"} par l'entreprise.`,
+        statut === "VALIDE" ? "JOURNAL_VALIDE" : "JOURNAL_REJETE"
+      );
+    }
 
     return NextResponse.json(updated);
   } catch (err) {

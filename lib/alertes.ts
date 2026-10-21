@@ -6,6 +6,9 @@ const SEPT_JOURS_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Calcule le numéro de semaine actuel du stage (semaine 1 = date de début)
 function calculerSemaineActuelle(dateDebut: Date): number {
+  if (!dateDebut || isNaN(dateDebut.getTime()) || dateDebut.getFullYear() <= 1970) {
+    return 1;
+  }
   const joursEcoules = (Date.now() - dateDebut.getTime()) / (1000 * 60 * 60 * 24);
   return Math.max(1, Math.floor(joursEcoules / 7) + 1);
 }

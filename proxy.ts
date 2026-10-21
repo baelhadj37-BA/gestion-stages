@@ -1,65 +1,80 @@
 // proxy.ts
-// Ce fichier protège les routes qui nécessitent une connexion
-// Il s'exécute AVANT chaque requête vers une route protégée
+// Protection des routes API et contrôle d'accès JWT — Next.js 16
 
-import { NextRequest, NextResponse } from 'next/server'
-import jwt from 'jsonwebtoken'
+import { NextRequest, NextResponse } from "next/server";
+import jwt from "jsonwebtoken";
 
-// Liste des routes publiques — pas besoin de connexion
-const routesPubliques = [
-  '/api/auth/login',
-  '/api/auth/register',
-  '/',
-  '/login',
-  '/register',
-]
+// Routes publiques ne nécessitant pas d'authentification
+const routesPubliquesExactes = ["/", "/api"];
+const routesPubliquesPrefixes = [
+  "/api/auth/login",
+  "/api/auth/register",
+  "/api/verify",
+  "/verify",
+];
 
 export function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl
+  const { pathname } = request.nextUrl;
 
-  // 1. Si la route est publique → laisser passer
-  if (routesPubliques.some(route => pathname.startsWith(route))) {
-    return NextResponse.next()
-  }
-
-  // 2. Récupérer le token depuis les headers
-  const authHeader = request.headers.get('authorization')
-  const token = authHeader?.replace('Bearer ', '')
-
-  // 3. Si pas de token → accès refusé
-  if (!token) {
-    return NextResponse.json(
-      { message: 'Accès refusé — Connexion requise' },
-      { status: 401 }
+  // 1. Laisser passer la racine et les routes publiques
+  if (
+    routesPubliquesExactes.includes(pathname) ||
+    routesPubliquesPrefixes.some(
+      (route) => pathname === route || pathname.startsWith(route + "/")
     )
+  ) {
+    return NextResponse.next();
   }
 
-  // 4. Vérifier le token
-  try {
-    const tokenValide = jwt.verify(token, process.env.JWT_SECRET as string) as {
-      userId: number
-      role: string
+  // 2. Récupérer le token depuis l'en-tête Authorization ou le cookie
+  const authHeader = request.headers.get("authorization");
+  const token =
+    authHeader?.replace("Bearer ", "") ||
+    request.cookies.get("auth_token")?.value;
+
+  // 3. Vérification des routes API protégées
+  if (pathname.startsWith("/api/")) {
+    if (!token) {
+      return NextResponse.json(
+        { message: "Accès refusé — Connexion requise" },
+        { status: 401 }
+      );
     }
 
-    // 5. Token valide → ajouter les infos dans les headers
-    const response = NextResponse.next()
-    response.headers.set('x-user-id', tokenValide.userId.toString())
-    response.headers.set('x-user-role', tokenValide.role)
-    return response
+    try {
+      const tokenValide = jwt.verify(
+        token,
+        process.env.JWT_SECRET as string
+      ) as {
+        userId: number;
+        role: string;
+      };
 
-  } catch {
-    // 6. Token invalide ou expiré
-    return NextResponse.json(
-      { message: 'Token invalide ou expiré' },
-      { status: 401 }
-    )
+      const requestHeaders = new Headers(request.headers);
+      requestHeaders.set("x-user-id", tokenValide.userId.toString());
+      requestHeaders.set("x-user-role", tokenValide.role);
+
+      return NextResponse.next({
+        request: {
+          headers: requestHeaders,
+        },
+      });
+    } catch {
+      return NextResponse.json(
+        { message: "Token invalide ou expiré" },
+        { status: 401 }
+      );
+    }
   }
+
+  return NextResponse.next();
 }
 
-// Routes sur lesquelles le middleware s'applique
+export default proxy;
+
 export const config = {
   matcher: [
-    '/api/:path*',
-    '/dashboard/:path*'
-  ]
-}
+    "/api/:path*",
+    "/verify/:path*",
+  ],
+};

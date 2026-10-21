@@ -12,6 +12,9 @@ function getUser(req: NextRequest) {
 }
 
 function calculerSemaineActuelle(dateDebut: Date): number {
+  if (!dateDebut || isNaN(dateDebut.getTime()) || dateDebut.getFullYear() <= 1970) {
+    return 1;
+  }
   const joursEcoules = (Date.now() - dateDebut.getTime()) / (1000 * 60 * 60 * 24);
   return Math.max(1, Math.floor(joursEcoules / 7) + 1);
 }

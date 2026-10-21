@@ -25,8 +25,14 @@ export async function PATCH(
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
 
-    const body = await req.json();
-    const { action, motifRejet } = body;
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch {
+      body = {};
+    }
+    const action = body?.action || "VALIDER";
+    const motifRejet = body?.motifRejet;
 
     if (!["VALIDER", "REJETER"].includes(action)) {
       return NextResponse.json(
@@ -88,6 +94,15 @@ export async function PATCH(
       "Votre convention a été validée par l'entreprise, elle passe en validation administrative.",
       "CONVENTION_ETAPE_SUIVANTE"
     );
+
+    const admins = await prisma.user.findMany({ where: { role: "ADMIN" } });
+    for (const admin of admins) {
+      await notifierUtilisateur(
+        admin.id,
+        `La convention du stage #${convention.stageId} a été signée par l'entreprise et attend votre visa.`,
+        "CONVENTION_A_VALIDER"
+      );
+    }
 
     return NextResponse.json(updated);
   } catch (err) {

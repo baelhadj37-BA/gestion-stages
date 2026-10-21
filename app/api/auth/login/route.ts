@@ -61,7 +61,11 @@ export async function POST(request: NextRequest) {
           nom: utilisateur.nom,
           prenom: utilisateur.prenom,
           email: utilisateur.email,
-          role: utilisateur.role
+          role: utilisateur.role,
+          matricule: utilisateur.matricule,
+          classe: utilisateur.classe,
+          secteur: utilisateur.secteur,
+          competences: utilisateur.competences,
         }
       },
       { status: 200 }

@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
+    "axios": "^1.20.0",
+    "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.3",
     "jsonwebtoken": "^9.0.3",
     "next": "16.2.11",
@@ -18,7 +20,8 @@
     "puppeteer": "^24.43.1",
     "qrcode": "^1.5.4",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "react-hook-form": "^7.87.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

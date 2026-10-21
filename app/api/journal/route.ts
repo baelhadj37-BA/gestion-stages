@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { verifierToken } from "@/lib/auth";
+import { notifierUtilisateur } from "@/lib/notifications";
 
 const prisma = new PrismaClient();
 
@@ -32,6 +33,13 @@ export async function POST(req: NextRequest) {
 
     const stage = await prisma.stage.findFirst({
       where: { id: Number(stageId), etudiantId: user.userId },
+      include: {
+        candidature: {
+          include: {
+            offre: true,
+          },
+        },
+      },
     });
     if (!stage) {
       return NextResponse.json({ error: "Stage introuvable" }, { status: 404 });
@@ -54,8 +62,32 @@ export async function POST(req: NextRequest) {
             contenu,
             statut: "SOUMIS",
             dateDepot: new Date(),
+            alerte: false,
           },
         });
+
+    const studentUser = await prisma.user.findUnique({
+      where: { id: user.userId },
+      select: { nom: true, prenom: true },
+    });
+    const studentName = studentUser ? `${studentUser.prenom} ${studentUser.nom}` : "Un étudiant";
+
+    const entrepriseId = stage.candidature?.offre?.entrepriseId;
+    if (entrepriseId) {
+      await notifierUtilisateur(
+        entrepriseId,
+        `${studentName} a soumis son rapport de stage de la semaine ${semaine}. En attente de votre validation.`,
+        "RAPPORT_SOUMIS"
+      );
+    }
+
+    if (stage.encadreurId && stage.encadreurId !== user.userId) {
+      await notifierUtilisateur(
+        stage.encadreurId,
+        `${studentName} a déposé son rapport de stage de la semaine ${semaine}.`,
+        "RAPPORT_DEPOSE"
+      );
+    }
 
     return NextResponse.json(journal, { status: 201 });
   } catch (err) {

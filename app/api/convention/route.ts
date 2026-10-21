@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { verifierToken } from "@/lib/auth";
 import { notifierUtilisateur } from "@/lib/notifications";
-
-const prisma = new PrismaClient();
 
 function getUser(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
@@ -60,38 +58,142 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(convention, { status: 201 });
   } catch (err) {
-    console.error(err);
+    console.error("Erreur POST convention:", err);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }
 
-// GET /api/convention?stageId=... — suivi en temps réel du statut
+// GET /api/convention :
+// - Si ?stageId=... est fourni : détail d'une convention avec son QR Code
+// - Sinon : liste globale des conventions (filtrable avec ?statut=...)
 export async function GET(req: NextRequest) {
-  const user = getUser(req);
-  if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+  try {
+    const user = getUser(req);
+    if (!user) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+    }
 
-  const stageId = req.nextUrl.searchParams.get("stageId");
-  if (!stageId) {
-    return NextResponse.json({ error: "stageId requis" }, { status: 400 });
-  }
+    const { searchParams } = new URL(req.url);
+    const stageId = searchParams.get("stageId");
 
-  const convention = await prisma.convention.findUnique({
-    where: { stageId: Number(stageId) },
-  });
+    // 1. Consultation d'une convention unique ciblée
+    if (stageId) {
+      const convention = await prisma.convention.findUnique({
+        where: { stageId: Number(stageId) },
+        include: {
+          stage: {
+            include: {
+              etudiant: {
+                select: {
+                  id: true,
+                  nom: true,
+                  prenom: true,
+                  email: true,
+                  matricule: true,
+                  classe: true,
+                },
+              },
+              candidature: {
+                include: {
+                  offre: {
+                    include: {
+                      entreprise: {
+                        select: {
+                          id: true,
+                          nom: true,
+                          prenom: true,
+                          email: true,
+                          secteur: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
 
-  if (!convention) {
-    return NextResponse.json({ error: "Convention introuvable" }, { status: 404 });
-  }
+      if (!convention) {
+        return NextResponse.json({ error: "Convention introuvable" }, { status: 404 });
+      }
 
-  // Récupère le QR Code associé, s'il existe (généré à la validation admin)
-  let qrCodeUrl: string | null = null;
-  if (convention.statut === "VALIDEE") {
-    const document = await prisma.document.findFirst({
-      where: { stageId: Number(stageId), type: "CONVENTION" },
-      orderBy: { dateGeneration: "desc" },
+      // Récupère le QR Code associé s'il existe (généré à la validation finale admin)
+      let qrCodeUrl: string | null = null;
+      if (convention.statut === "VALIDEE") {
+        const document = await prisma.document.findFirst({
+          where: { stageId: Number(stageId), type: "CONVENTION" },
+          orderBy: { dateGeneration: "desc" },
+        });
+        qrCodeUrl = document?.qrCodeUrl ?? null;
+      }
+
+      return NextResponse.json({ ...convention, qrCodeUrl });
+    }
+
+    // 2. Consultation de la collection complète des conventions
+    const statut = searchParams.get("statut");
+    const whereClause: any = {};
+
+    if (statut && statut !== "TOUTES") {
+      whereClause.statut = statut;
+    }
+
+    // Contrôle d'accès selon le rôle de l'utilisateur
+    if (user.role === "ENTREPRISE") {
+      whereClause.stage = {
+        candidature: {
+          offre: {
+            entrepriseId: user.userId,
+          },
+        },
+      };
+    } else if (user.role === "ETUDIANT") {
+      whereClause.stage = {
+        etudiantId: user.userId,
+      };
+    }
+
+    const conventions = await prisma.convention.findMany({
+      where: whereClause,
+      include: {
+        stage: {
+          include: {
+            etudiant: {
+              select: {
+                id: true,
+                nom: true,
+                prenom: true,
+                email: true,
+                matricule: true,
+                classe: true,
+              },
+            },
+            candidature: {
+              include: {
+                offre: {
+                  include: {
+                    entreprise: {
+                      select: {
+                        id: true,
+                        nom: true,
+                        prenom: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
     });
-    qrCodeUrl = document?.qrCodeUrl ?? null;
-  }
 
-  return NextResponse.json({ ...convention, qrCodeUrl });
+    return NextResponse.json(conventions);
+  } catch (error) {
+    console.error("Erreur GET conventions:", error);
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+  }
 }

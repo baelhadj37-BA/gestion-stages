@@ -44,13 +44,19 @@ export async function PATCH(
 
     const convention = await prisma.convention.findUnique({
       where: { id },
-      include: { stage: true },
+      include: {
+        stage: {
+          include: {
+            candidature: { include: { offre: true } },
+          },
+        },
+      },
     });
     if (!convention) {
       return NextResponse.json({ error: "Convention introuvable" }, { status: 404 });
     }
 
-    if (convention.statut !== "ETAPE_ENTREPRISE") {
+    if (!["ETAPE_ETUDIANT", "ETAPE_ENTREPRISE"].includes(convention.statut)) {
       return NextResponse.json(
         { error: `Action impossible depuis le statut actuel: ${convention.statut}` },
         { status: 409 }
@@ -68,6 +74,15 @@ export async function PATCH(
         `Votre convention a été rejetée par l'administration. Motif : ${motifRejet}`,
         "CONVENTION_REJETEE"
       );
+
+      const entrepriseId = convention.stage.candidature?.offre?.entrepriseId;
+      if (entrepriseId) {
+        await notifierUtilisateur(
+          entrepriseId,
+          `La convention du stage #${convention.stageId} a été rejetée par l'administration. Motif : ${motifRejet}`,
+          "CONVENTION_REJETEE"
+        );
+      }
 
       return NextResponse.json(rejetee);
     }
@@ -89,6 +104,15 @@ export async function PATCH(
       "Votre convention est validée ! Le document officiel est disponible.",
       "CONVENTION_VALIDEE"
     );
+
+    const entrepriseId = convention.stage.candidature?.offre?.entrepriseId;
+    if (entrepriseId) {
+      await notifierUtilisateur(
+        entrepriseId,
+        `La convention du stage #${convention.stageId} a été officiellement validée par l'administration.`,
+        "CONVENTION_VALIDEE"
+      );
+    }
 
     return NextResponse.json(validee);
   } catch (err) {
