@@ -1,27 +1,88 @@
-import { NextRequest, NextResponse } from 'next/server';
+// app/api/auth/register/route.ts
+// Cette route gère l'inscription d'un nouvel utilisateur
+// Méthode : POST
+// URL : /api/auth/register
+
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { chiffrerMotDePasse, creerToken } from '@/lib/auth'
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { email, password, nom } = body;
+    // 1. Récupérer les données envoyées par le formulaire
+    const body = await request.json()
+    const { nom, prenom, email, motDePasse, role } = body
 
-    if (!email || !password) {
+    // 2. Vérifier que tous les champs obligatoires sont remplis
+    if (!nom || !prenom || !email || !motDePasse || !role) {
       return NextResponse.json(
-        { message: 'Email et mot de passe requis.' },
+        { message: 'Tous les champs sont obligatoires' },
         { status: 400 }
-      );
+      )
     }
 
-    // Logique d'inscription (ou simulation validée)
+    // 2bis. Vérifier que le rôle demandé est autorisé en auto-inscription
+    // ADMIN et ENCADREUR ne doivent JAMAIS être créés via ce formulaire public —
+    // sinon n'importe qui peut s'auto-attribuer un rôle privilégié en appelant
+    // l'API directement (le formulaire ne protège rien côté serveur).
+    const rolesAutorises = ['ETUDIANT', 'ENTREPRISE']
+    if (!rolesAutorises.includes(role)) {
+      return NextResponse.json(
+        { message: 'Rôle invalide pour une inscription publique' },
+        { status: 400 }
+      )
+    }
+
+    // 3. Vérifier si l'email existe déjà dans la base de données
+    const utilisateurExistant = await prisma.user.findUnique({
+      where: { email }
+    })
+
+    if (utilisateurExistant) {
+      return NextResponse.json(
+        { message: 'Cet email est déjà utilisé' },
+        { status: 400 }
+      )
+    }
+
+    // 4. Chiffrer le mot de passe avant de le sauvegarder
+    const motDePasseChiffre = await chiffrerMotDePasse(motDePasse)
+
+    // 5. Créer l'utilisateur dans la base de données
+    const nouvelUtilisateur = await prisma.user.create({
+      data: {
+        nom,
+        prenom,
+        email,
+        motDePasse: motDePasseChiffre,
+        role
+      }
+    })
+
+    // 6. Créer un token JWT
+    const token = creerToken(nouvelUtilisateur.id, nouvelUtilisateur.role)
+
+    // 7. Retourner le token et les infos
     return NextResponse.json(
-      { message: 'Inscription réussie', user: { email, nom } },
+      {
+        message: 'Inscription réussie',
+        token,
+        utilisateur: {
+          id: nouvelUtilisateur.id,
+          nom: nouvelUtilisateur.nom,
+          prenom: nouvelUtilisateur.prenom,
+          email: nouvelUtilisateur.email,
+          role: nouvelUtilisateur.role
+        }
+      },
       { status: 201 }
-    );
+    )
+
   } catch (error) {
-    console.error('Erreur lors de l’inscription :', error);
+    console.error('Erreur inscription:', error)
     return NextResponse.json(
-      { message: 'Erreur serveur lors de l’inscription.' },
+      { message: 'Erreur serveur' },
       { status: 500 }
-    );
+    )
   }
 }

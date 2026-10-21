@@ -1,206 +1,726 @@
-// app/login/page.tsx
-// Page de connexion — Design professionnel IPD
-
 'use client'
 
-import { useState } from 'react'
+import {
+  useState,
+  useEffect,
+  useRef,
+  type FormEvent,
+  type CSSProperties,
+  type ReactNode,
+} from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
+import Link from 'next/link'
+
+/* ─────────────────────────────────────────────────────────────
+   Dimensions de la maquette : 1536 × 818 px.
+   u(px) convertit une mesure de la maquette en unité "cqw"
+   (1 % de la largeur du cadre), ce qui fait que toute la page
+   se redimensionne comme une image, avec les mêmes proportions.
+   ───────────────────────────────────────────────────────────── */
+const W = 1536
+const H = 818
+const u = (px: number) => `${((px / W) * 100).toFixed(4)}cqw`
+
+const at = (left: number, top: number, extra: CSSProperties = {}): CSSProperties => ({
+  position: 'absolute',
+  left: u(left),
+  top: u(top),
+  ...extra,
+})
+
+const PAGE_BG =
+  'radial-gradient(ellipse 38% 48% at 0% 100%, rgba(140,185,255,0.55) 0%, transparent 70%),' +
+  'radial-gradient(ellipse 34% 44% at 100% 0%, rgba(170,205,255,0.45) 0%, transparent 70%),' +
+  'linear-gradient(135deg, #eaf2ff 0%, #f4f8ff 50%, #e3eeff 100%)'
+
+/* ───────── Icônes ───────── */
+
+function Svg({ size, sw = 1.6, children }: { size: number; sw?: number; children: ReactNode }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={sw}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ width: u(size), height: u(size), flexShrink: 0 }}
+    >
+      {children}
+    </svg>
+  )
+}
+
+const IconUser = () => (
+  <Svg size={26}>
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" />
+  </Svg>
+)
+
+const IconLock = () => (
+  <Svg size={26}>
+    <rect x="5" y="11" width="14" height="10" rx="2" />
+    <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+  </Svg>
+)
+
+const IconEye = ({ off }: { off: boolean }) => (
+  <Svg size={28}>
+    <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+    <circle cx="12" cy="12" r="3" />
+    {off && <path d="M3 3l18 18" />}
+  </Svg>
+)
+
+const IconArrow = () => (
+  <Svg size={28} sw={2.2}>
+    <path d="M5 12h14M13 6l6 6-6 6" />
+  </Svg>
+)
+
+const IconCap = () => (
+  <Svg size={46} sw={1.3}>
+    <path d="M12 3L2 8l10 5 10-5-10-5z" />
+    <path d="M6 10.5V16c0 1.5 3 3 6 3s6-1.5 6-3v-5.5" />
+    <path d="M22 8v6" />
+  </Svg>
+)
+
+const IconPeople = () => (
+  <Svg size={42} sw={1.3}>
+    <circle cx="9" cy="8" r="3" />
+    <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+    <circle cx="17" cy="9" r="2.5" />
+    <path d="M17 14c2.5 0 4.5 2 4.5 5" />
+  </Svg>
+)
+
+const IconChart = () => (
+  <Svg size={45} sw={1.3}>
+    <rect x="3" y="14" width="4" height="7" />
+    <rect x="10" y="10" width="4" height="11" />
+    <rect x="17" y="6" width="4" height="15" />
+    <path d="M3 9l6-4 5 3 7-5" />
+  </Svg>
+)
+
+/* ───────── Style commun des champs ───────── */
+
+const fieldStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  width: '100%',
+  height: u(69),
+  boxSizing: 'border-box',
+  padding: `0 ${u(25)} 0 ${u(26)}`,
+  gap: u(25),
+  borderRadius: u(18),
+  border: `${u(1.5)} solid #d4ddf0`,
+  background: 'rgba(255,255,255,0.78)',
+  color: '#6b7a99',
+  boxShadow: '0 1px 2px rgba(60,90,160,0.05)',
+  transition: 'box-shadow .2s, border-color .2s',
+}
+
+const inputStyle: CSSProperties = {
+  fontSize: u(18),
+  color: '#2d3b5a',
+}
+
+const inputClass =
+  'w-full min-w-0 bg-transparent outline-none placeholder:text-[#8f9bb5] autofill:shadow-[inset_0_0_0_1000px_#fbfcff]'
+
+const focusClass =
+  'focus-within:border-[#4a8cf0] focus-within:shadow-[0_0_0_0.25cqw_rgba(74,140,240,0.2)]'
+
+/* ───────── Page de connexion ───────── */
 
 export default function LoginPage() {
   const router = useRouter()
-  const [email, setEmail] = useState('')
+
+  const emailRef = useRef<HTMLInputElement>(null)
+  const souvenirRef = useRef<HTMLInputElement>(null)
+
   const [motDePasse, setMotDePasse] = useState('')
-  const [afficherMotDePasse, setAfficherMotDePasse] = useState(false)
+  const [afficher, setAfficher] = useState(false)
   const [erreur, setErreur] = useState('')
   const [chargement, setChargement] = useState(false)
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  /* Restaurer l'email mémorisé */
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('rememberedEmail')
+      if (saved && emailRef.current && souvenirRef.current) {
+        emailRef.current.value = saved
+        souvenirRef.current.checked = true
+      }
+    } catch {
+      // Le formulaire reste utilisable si le stockage est indisponible.
+    }
+  }, [])
+
+  /* Authentification */
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    if (chargement) return
+
     setErreur('')
     setChargement(true)
 
+    const email = emailRef.current?.value.trim() ?? ''
+    const souvenir = souvenirRef.current?.checked ?? false
+
     try {
-      const response = await fetch('/api/auth/login', {
+      const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, motDePasse })
+        body: JSON.stringify({ email, motDePasse }),
       })
 
-      const data = await response.json()
+      const data = await res.json()
 
-      if (!response.ok) {
-        setErreur(data.message)
+      if (!res.ok) {
+        setErreur(data.message || 'Email ou mot de passe incorrect.')
+        return
+      }
+
+      if (!data.token || !data.utilisateur) {
+        setErreur('La réponse du serveur est incomplète.')
         return
       }
 
       localStorage.setItem('token', data.token)
       localStorage.setItem('user', JSON.stringify(data.utilisateur))
 
-      const role = data.utilisateur.role
-      if (role === 'ADMIN') router.push('/dashboard/admin')
-      else if (role === 'ETUDIANT') router.push('/dashboard/etudiant')
-      else if (role === 'ENTREPRISE') router.push('/dashboard/entreprise')
-      else if (role === 'ENCADREUR') router.push('/dashboard/encadreur')
+      if (souvenir) localStorage.setItem('rememberedEmail', email)
+      else localStorage.removeItem('rememberedEmail')
 
+      switch (data.utilisateur.role) {
+        case 'ADMIN':
+          router.push('/dashboard/admin')
+          break
+        case 'ETUDIANT':
+          router.push('/dashboard/etudiant')
+          break
+        case 'ENTREPRISE':
+          router.push('/dashboard/entreprise')
+          break
+        case 'ENCADREUR':
+          router.push('/dashboard/encadreur')
+          break
+        default:
+          setErreur('Le rôle de cet utilisateur n’est pas reconnu.')
+      }
     } catch {
-      setErreur('Erreur de connexion — vérifiez votre réseau')
+      setErreur('Impossible de contacter le serveur. Vérifiez votre connexion.')
     } finally {
       setChargement(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center"
-      style={{ background: 'linear-gradient(135deg, #1a237e 0%, #1565c0 50%, #bbdefb 100%)' }}>
-
-      {/* Carte principale */}
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 flex overflow-hidden"
-        style={{ minHeight: '480px' }}>
-
-        {/* Partie gauche — Formulaire */}
-        <div className="flex-1 p-10 flex flex-col justify-center">
-
-          {/* Titre */}
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <div className="h-px w-12 bg-blue-900"></div>
-              <h1 className="text-2xl font-bold text-blue-900 tracking-widest uppercase">
-                LOGIN
-              </h1>
-              <div className="h-px w-12 bg-blue-900"></div>
-            </div>
-          </div>
-
-          {/* Message d'erreur */}
-          {erreur && (
-            <div className="bg-red-50 border border-red-300 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
-              ⚠️ {erreur}
-            </div>
-          )}
-
-          {/* Formulaire */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-
-            {/* Email */}
-            <div className="flex items-center border border-gray-300 rounded-xl px-4 py-3 focus-within:border-blue-900 focus-within:ring-1 focus-within:ring-blue-900 transition-all">
-              <svg className="w-5 h-5 text-gray-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Adresse e-mail"
-                required
-                className="flex-1 outline-none text-gray-700 bg-transparent"
+    <main
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1.5rem',
+        overflowX: 'auto',
+        background: PAGE_BG,
+      }}
+    >
+      {/* Conteneur : mêmes proportions que la maquette */}
+      <div
+        style={{
+          position: 'relative',
+          flexShrink: 0,
+          width: 'max(min(94vw, calc((100vh - 3rem) * 1.8778)), 1000px)',
+          aspectRatio: `${W} / ${H}`,
+          containerType: 'inline-size',
+        }}
+      >
+        {/* Carte arrondie */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            overflow: 'hidden',
+            borderRadius: u(36),
+            boxShadow: '0 30px 80px rgba(30, 80, 170, 0.25)',
+            background: '#f5f8ff',
+          }}
+        >
+          {/* ═══════════ PANNEAU GAUCHE ═══════════ */}
+          <section
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              width: u(818),
+              height: u(818),
+              color: '#fff',
+              backgroundColor: '#0b3a8a',
+              backgroundImage:
+                "linear-gradient(180deg, rgba(14,76,182,0.82) 0%, rgba(14,76,182,0.50) 16%, rgba(14,76,182,0) 38%, rgba(8,40,110,0) 66%, rgba(8,40,110,0.88) 90%, rgba(7,36,100,0.96) 100%), url('/login-hero.png')",
+              backgroundSize: 'cover',
+              backgroundPosition: '40% 60%',
+            }}
+          >
+            {/* Logo */}
+            <div
+              style={{
+                ...at(72, 23),
+                width: u(138),
+                height: u(138),
+                borderRadius: '50%',
+                background: '#fff',
+                overflow: 'hidden',
+                boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
+              }}
+            >
+              <Image
+                src="/logo-ipd.png"
+                alt="Logo IPD Thomas Sankara"
+                fill
+                sizes="160px"
+                priority
+                style={{ objectFit: 'contain' }}
               />
             </div>
 
-            {/* Mot de passe */}
-            <div className="flex items-center border border-gray-300 rounded-xl px-4 py-3 focus-within:border-blue-900 focus-within:ring-1 focus-within:ring-blue-900 transition-all">
-              <svg className="w-5 h-5 text-gray-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
+            {/* Trait vertical */}
+            <div
+              style={{
+                ...at(240, 50),
+                width: u(1.5),
+                height: u(85),
+                background: 'rgba(255,255,255,0.7)',
+              }}
+            />
+
+            {/* Nom de l'établissement */}
+            <div
+              style={{
+                ...at(263, 49),
+                fontSize: u(25),
+                lineHeight: u(30),
+                letterSpacing: '0.02em',
+              }}
+            >
+              <div style={{ fontWeight: 800 }}>INSTITUT POLYTECHNIQUE</div>
+              <div style={{ fontWeight: 800 }}>DE DAKAR</div>
+              <div style={{ fontWeight: 400 }}>Thomas Sankara</div>
+            </div>
+
+            {/* Slogan */}
+            <div
+              style={{
+                ...at(76, 179),
+                fontSize: u(30),
+                lineHeight: u(32),
+                fontStyle: 'italic',
+              }}
+            >
+              <div style={{ fontWeight: 700 }}>Former aujourd’hui</div>
+              <div style={{ fontWeight: 300 }}>les talents de demain</div>
+            </div>
+
+            {/* Trait sous le slogan */}
+            <div
+              style={{
+                ...at(76, 264),
+                width: u(107),
+                height: u(2),
+                background: 'rgba(255,255,255,0.9)',
+              }}
+            />
+
+            {/* Fonctionnalités en bas */}
+            <div
+              style={{
+                ...at(60, 761),
+                transform: 'translateY(-50%)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: u(13),
+              }}
+            >
+              <IconCap />
+              <span style={{ fontSize: u(17), fontWeight: 500 }}>Gestion des stages</span>
+            </div>
+
+            <div
+              style={{
+                ...at(290, 742),
+                width: u(1.5),
+                height: u(41),
+                background: 'rgba(255,255,255,0.45)',
+              }}
+            />
+
+            <div
+              style={{
+                ...at(325, 761),
+                transform: 'translateY(-50%)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: u(15),
+              }}
+            >
+              <IconPeople />
+              <span style={{ fontSize: u(17), fontWeight: 500 }}>Suivi des étudiants</span>
+            </div>
+
+            <div
+              style={{
+                ...at(551, 742),
+                width: u(1.5),
+                height: u(41),
+                background: 'rgba(255,255,255,0.45)',
+              }}
+            />
+
+            <div
+              style={{
+                ...at(586, 761),
+                transform: 'translateY(-50%)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: u(18),
+              }}
+            >
+              <IconChart />
+              <span style={{ fontSize: u(17), fontWeight: 500, lineHeight: u(22) }}>
+                Un avenir
+                <br />
+                plus proche
+              </span>
+            </div>
+          </section>
+
+          {/* ═══════════ PANNEAU DROIT ═══════════ */}
+          <section
+            style={{
+              position: 'absolute',
+              left: u(818),
+              top: 0,
+              width: u(718),
+              height: u(818),
+              background: 'linear-gradient(160deg, #f8faff 0%, #eef3fc 60%, #e6eefb 100%)',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Vague bleue en bas à droite */}
+            <div
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                right: 0,
+                bottom: 0,
+                width: u(175),
+                height: u(160),
+                borderTopLeftRadius: '100%',
+                background:
+                  'linear-gradient(135deg, rgba(160,200,255,0.30) 0%, rgba(70,140,255,0.55) 100%)',
+              }}
+            />
+          </section>
+
+          {/* Toque */}
+          <svg
+            viewBox="0 0 120 80"
+            aria-hidden="true"
+            style={{ ...at(1374, 32), width: u(88), height: u(59) }}
+          >
+            <defs>
+              <linearGradient id="toque-top" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#5fb0ff" />
+                <stop offset="100%" stopColor="#2f7cf6" />
+              </linearGradient>
+            </defs>
+            <path d="M26 40 V62 C26 70 92 70 92 62 V40 L60 54 Z" fill="#1d5fd0" />
+            <path d="M60 6 L116 28 L60 50 L4 28 Z" fill="url(#toque-top)" />
+            <path d="M108 32 V60" stroke="#0f3f9a" strokeWidth="3" />
+            <circle cx="108" cy="64" r="4" fill="#0f3f9a" />
+          </svg>
+
+          {/* « Ensemble vers l'excellence » */}
+          <div
+            style={{
+              ...at(1399, 90),
+              fontFamily: "'Segoe Script', 'Bradley Hand', 'Brush Script MT', cursive",
+              fontSize: u(19),
+              lineHeight: u(24),
+              color: '#1f4fc2',
+              transform: 'rotate(-12deg)',
+              transformOrigin: 'left top',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <div>Ensemble vers</div>
+            <div style={{ paddingLeft: u(16) }}>l’excellence</div>
+          </div>
+          <svg
+            viewBox="0 0 100 22"
+            aria-hidden="true"
+            style={{ ...at(1416, 138), width: u(92), height: u(20) }}
+          >
+            <path
+              d="M2 17 Q45 22 96 4"
+              fill="none"
+              stroke="#1f4fc2"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+          </svg>
+
+          {/* Titre LOGIN */}
+          <div
+            style={{
+              ...at(952, 107),
+              width: u(404),
+              height: u(60),
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: u(35),
+              color: '#1946b5',
+            }}
+          >
+            <span style={{ width: u(81), height: u(2.5), background: '#1946b5' }} />
+            <h1
+              style={{
+                margin: 0,
+                fontSize: u(50),
+                fontWeight: 800,
+                letterSpacing: '0.1em',
+                lineHeight: 1,
+              }}
+            >
+              LOGIN
+            </h1>
+            <span style={{ width: u(81), height: u(2.5), background: '#1946b5' }} />
+          </div>
+
+          {/* Bienvenue */}
+          <div
+            style={{
+              ...at(905, 198),
+              width: u(500),
+              textAlign: 'center',
+            }}
+          >
+            <h2
+              style={{
+                margin: 0,
+                fontSize: u(23),
+                lineHeight: u(32),
+                fontWeight: 700,
+                color: '#1946b5',
+              }}
+            >
+              Bienvenue ! 👋
+            </h2>
+            <p
+              style={{
+                margin: `${u(8)} 0 0`,
+                fontSize: u(16),
+                lineHeight: u(25),
+                color: '#6b7a99',
+              }}
+            >
+              Connectez-vous à votre compte pour accéder
+              <br />
+              à la plateforme de gestion des stages.
+            </p>
+          </div>
+
+          {/* ═══════════ FORMULAIRE ═══════════ */}
+          <form
+            onSubmit={handleSubmit}
+            style={{ ...at(886, 329), width: u(588) }}
+          >
+            {erreur && (
+              <div
+                role="alert"
+                style={{
+                  position: 'absolute',
+                  bottom: `calc(100% + ${u(8)})`,
+                  left: 0,
+                  right: 0,
+                  padding: `${u(7)} ${u(14)}`,
+                  borderRadius: u(10),
+                  border: '1px solid #fecaca',
+                  background: '#fef2f2',
+                  color: '#b91c1c',
+                  fontSize: u(14),
+                  textAlign: 'center',
+                }}
+              >
+                {erreur}
+              </div>
+            )}
+
+            {/* Email */}
+            <label style={fieldStyle} className={focusClass}>
+              <IconUser />
               <input
-                type={afficherMotDePasse ? 'text' : 'password'}
+                ref={emailRef}
+                type="email"
+                required
+                defaultValue=""
+                placeholder="Adresse email"
+                autoComplete="email"
+                aria-label="Adresse email"
+                className={inputClass}
+                style={inputStyle}
+              />
+            </label>
+
+            {/* Mot de passe */}
+            <label
+              style={{ ...fieldStyle, height: u(70), marginTop: u(22) }}
+              className={focusClass}
+            >
+              <IconLock />
+              <input
+                type={afficher ? 'text' : 'password'}
+                required
                 value={motDePasse}
                 onChange={(e) => setMotDePasse(e.target.value)}
                 placeholder="Mot de passe"
-                required
-                className="flex-1 outline-none text-gray-700 bg-transparent"
+                autoComplete="current-password"
+                aria-label="Mot de passe"
+                className={inputClass}
+                style={inputStyle}
               />
               <button
                 type="button"
-                onClick={() => setAfficherMotDePasse(!afficherMotDePasse)}
-                className="text-gray-400 hover:text-blue-900 transition-colors"
+                onClick={() => setAfficher((prev) => !prev)}
+                aria-label={afficher ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                style={{
+                  flexShrink: 0,
+                  padding: 0,
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#6b7a99',
+                  cursor: 'pointer',
+                  display: 'flex',
+                }}
               >
-                {afficherMotDePasse ? (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                  </svg>
-                ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                )}
+                <IconEye off={!afficher} />
               </button>
-            </div>
+            </label>
 
             {/* Se souvenir de moi */}
-            <div className="flex items-center gap-2">
-              <input type="checkbox" id="remember" className="w-4 h-4 accent-blue-900" />
-              <label htmlFor="remember" className="text-sm text-gray-500">
-                Se souvenir de moi
-              </label>
-            </div>
+            <label
+              style={{
+                marginTop: u(30),
+                height: u(26),
+                display: 'flex',
+                alignItems: 'center',
+                gap: u(16),
+                cursor: 'pointer',
+                userSelect: 'none',
+                fontSize: u(17.5),
+                color: '#43526f',
+              }}
+            >
+              <input
+                ref={souvenirRef}
+                type="checkbox"
+                className="relative shrink-0 cursor-pointer appearance-none border-[#b0bad0] bg-white checked:border-[#1d6fe8] checked:bg-[#1d6fe8] after:absolute after:left-[31%] after:top-[8%] after:h-[58%] after:w-[30%] after:rotate-45 after:border-b-[0.2cqw] after:border-r-[0.2cqw] after:border-white after:opacity-0 after:content-[''] checked:after:opacity-100"
+                style={{
+                  width: u(26),
+                  height: u(26),
+                  borderRadius: u(7),
+                  borderWidth: u(2),
+                  borderStyle: 'solid',
+                }}
+              />
+              Se souvenir de moi
+            </label>
 
-            {/* Bouton connexion */}
+            {/* Bouton Connexion */}
             <button
               type="submit"
               disabled={chargement}
-              className="w-full py-3 rounded-xl text-white font-semibold text-lg tracking-wide transition-all hover:opacity-90 disabled:opacity-50"
-              style={{ backgroundColor: '#1a237e' }}
+              className="hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
+              style={{
+                marginTop: u(30),
+                width: '100%',
+                height: u(73),
+                borderRadius: u(20),
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: u(14),
+                color: '#fff',
+                fontSize: u(23),
+                fontWeight: 600,
+                background:
+                  'linear-gradient(100deg, #46a0ff 0%, #1a73e8 45%, #0b56c6 100%)',
+                boxShadow: '0 14px 26px rgba(20, 100, 220, 0.35)',
+                transition: 'filter .2s',
+              }}
             >
-              {chargement ? 'Connexion...' : 'Se connecter'}
+              {chargement ? (
+                <>
+                  <span
+                    className="animate-spin"
+                    aria-hidden="true"
+                    style={{
+                      width: u(22),
+                      height: u(22),
+                      borderRadius: '50%',
+                      border: '2px solid rgba(255,255,255,0.4)',
+                      borderTopColor: '#fff',
+                    }}
+                  />
+                  Connexion...
+                </>
+              ) : (
+                <>
+                  Connexion
+                  <IconArrow />
+                </>
+              )}
             </button>
-
           </form>
 
-          {/* Lien inscription */}
-          <p className="text-center text-sm text-gray-500 mt-6">
-            Vous n&apos;avez pas de compte ?{' '}
-            <a href="/register" className="text-blue-600 hover:underline font-medium">
-              S&apos;inscrire
-            </a>
+          {/* Inscription */}
+          <p
+            style={{
+              ...at(886, 683),
+              width: u(588),
+              margin: 0,
+              textAlign: 'center',
+              fontSize: u(17.5),
+              lineHeight: u(28),
+              color: '#41506e',
+            }}
+          >
+            Vous n’avez pas de compte ?{' '}
+            <Link
+              href="/register"
+              style={{
+                color: '#1d6fe8',
+                fontWeight: 700,
+                textDecoration: 'underline',
+                textUnderlineOffset: u(4),
+              }}
+            >
+              S’inscrire
+            </Link>
           </p>
-
         </div>
-
-        {/* Partie droite — Logo IPD */}
-        <div className="flex-1 flex flex-col items-center justify-center p-10"
-          style={{ background: 'linear-gradient(180deg, #f8f9ff 0%, #e8eaf6 100%)' }}>
-
-          {/* Logo */}
-          <div className="mb-6">
-            <Image
-              src="/logo-ipd.png"
-              alt="Logo IPD Thomas Sankara"
-              width={180}
-              height={180}
-              className="object-contain"
-              style={{ mixBlendMode: 'multiply' }}
-            />
-          </div>
-
-          {/* Ligne séparatrice */}
-          <div className="w-16 h-px bg-blue-900 mb-6"></div>
-
-          {/* Texte */}
-          <div className="text-center">
-            <p className="text-blue-900 font-bold text-xl tracking-widest uppercase leading-tight">
-              PLATEFORME
-            </p>
-            <p className="text-blue-900 font-bold text-xl tracking-widest uppercase leading-tight">
-              DE
-            </p>
-            <p className="text-blue-900 font-bold text-xl tracking-widest uppercase leading-tight">
-              GESTION DES STAGES
-            </p>
-          </div>
-
-          {/* Ligne séparatrice bas */}
-          <div className="w-16 h-px bg-blue-900 mt-6"></div>
-
-          {/* Slogan */}
-          <p className="text-gray-500 text-xs mt-4 text-center italic">
-            S&apos;élever par le savoir pour servir
-          </p>
-
-        </div>
-
       </div>
-    </div>
+    </main>
   )
 }
