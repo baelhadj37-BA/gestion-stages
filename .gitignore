@@ -42,3 +42,5 @@ next-env.d.ts
 
 /app/generated/prisma
 "*.vsix" 
+public/fgff.htm 
+public/fgff_files/ 

@@ -1,109 +1,114 @@
-import { PrismaClient } from "@prisma/client";
-import { chiffrerMotDePasse } from "../lib/auth";
+import { PrismaClient } from '@prisma/client'
+import bcrypt from 'bcryptjs'
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient()
 
 async function main() {
-  const motDePasseHash = await chiffrerMotDePasse("password123");
+  const hash = await bcrypt.hash('password123', 12)
 
-  // 1. Créer un étudiant
-  const etudiant = await prisma.user.create({
-    data: {
-      nom: "Diop",
-      prenom: "Fatou",
-      email: "etudiant@test.com",
-      motDePasse: motDePasseHash,
-      role: "ETUDIANT",
-      matricule: "L3GL2026-001",
-      classe: "L3 Génie Logiciel",
-      competences: "JavaScript,React,SQL",
-    },
-  });
+  // ── Utilisateurs ──
+  const entreprise = await prisma.user.upsert({
+    where: { email: 'atos@test.sn' },
+    update: {},
+    create: { nom: 'ATOS', prenom: 'Sénégal', email: 'atos@test.sn', motDePasse: hash, role: 'ENTREPRISE', secteur: 'Informatique' },
+  })
 
-  // 2. Créer une entreprise (le "maître de stage")
-  const entreprise = await prisma.user.create({
-    data: {
-      nom: "TechCorp",
-      prenom: "SARL",
-      email: "entreprise@test.com",
-      motDePasse: motDePasseHash,
-      role: "ENTREPRISE",
-      secteur: "Développement logiciel",
-    },
-  });
+  const etudiant = await prisma.user.upsert({
+    where: { email: 'fatou@test.sn' },
+    update: {},
+    create: { nom: 'Diop', prenom: 'Fatou', email: 'fatou@test.sn', motDePasse: hash, role: 'ETUDIANT', classe: 'L3 GL', matricule: 'L3GL2026-001' },
+  })
 
-  // 3. Créer un encadreur pédagogique
-  const encadreur = await prisma.user.create({
-    data: {
-      nom: "Sow",
-      prenom: "Moussa",
-      email: "encadreur@test.com",
-      motDePasse: motDePasseHash,
-      role: "ENCADREUR",
-    },
-  });
+  const encadreur = await prisma.user.upsert({
+    where: { email: 'sow@ipd.sn' },
+    update: {},
+    create: { nom: 'Sow', prenom: 'Moussa', email: 'sow@ipd.sn', motDePasse: hash, role: 'ENCADREUR' },
+  })
 
-  // 3bis. Créer un administrateur   <-- NOUVEAU BLOC AJOUTÉ ICI
-  const admin = await prisma.user.create({
+  // ── Offres ──
+  const offre1 = await prisma.offre.create({
     data: {
-      nom: "Sarr",
-      prenom: "Aminata",
-      email: "admin@test.com",
-      motDePasse: motDePasseHash,
-      role: "ADMIN",
-    },
-  });
-
-  // 4. Créer une offre publiée par l'entreprise
-  const offre = await prisma.offre.create({
-    data: {
-      titre: "Stage développeur Full Stack",
-      description: "Stage de fin d'études en développement web",
-      duree: "3 mois",
-      localisation: "Dakar",
-      tags: "JavaScript,React,Node.js",
-      statut: "PUBLIEE",
+      titre: 'Stage développeur Full Stack',
+      description: "Stage de fin d'études en développement web React/Node.js",
+      duree: '3 mois',
+      localisation: 'Dakar',
+      tags: 'JavaScript,React,Node.js',
+      statut: 'PUBLIEE',
       entrepriseId: entreprise.id,
     },
-  });
+  })
 
-  // 5. Créer une candidature acceptée
-  const candidature = await prisma.candidature.create({
+  const offre2 = await prisma.offre.create({
     data: {
-      cvUrl: "/uploads/cv-fatou-diop.pdf",
-      statut: "ACCEPTEE",
-      etudiantId: etudiant.id,
-      offreId: offre.id,
+      titre: 'Stage Data Analyst',
+      description: 'Analyse de données et reporting avec Python et Power BI',
+      duree: '2 mois',
+      localisation: 'Dakar',
+      tags: 'Python,SQL,Power BI',
+      statut: 'PUBLIEE',
+      entrepriseId: entreprise.id,
     },
-  });
+  })
 
-  // 6. Créer le stage correspondant
-  const stage = await prisma.stage.create({
+  await prisma.offre.create({
     data: {
-      dateDebut: new Date("2026-09-01"),
-      dateFin: new Date("2026-12-01"),
+      titre: 'Stage DevOps',
+      description: 'Mise en place de pipelines CI/CD et gestion des serveurs',
+      duree: '4 mois',
+      localisation: 'Dakar',
+      tags: 'Docker,CI/CD,Linux',
+      statut: 'EN_ATTENTE',
+      entrepriseId: entreprise.id,
+    },
+  })
+
+  // ── Candidatures ──
+  const candidature1 = await prisma.candidature.create({
+    data: {
+      cvUrl: '/uploads/cv-fatou.pdf',
+      statut: 'ACCEPTEE',
+      etudiantId: etudiant.id,
+      offreId: offre1.id,
+    },
+  })
+
+  await prisma.candidature.create({
+    data: {
+      cvUrl: '/uploads/cv-fatou-2.pdf',
+      statut: 'EN_ATTENTE',
+      etudiantId: etudiant.id,
+      offreId: offre2.id,
+    },
+  })
+
+  // ── Stage ──
+  await prisma.stage.create({
+    data: {
+      dateDebut: new Date('2026-09-01'),
+      dateFin: new Date('2026-12-01'),
       etudiantId: etudiant.id,
       encadreurId: encadreur.id,
-      candidatureId: candidature.id,
+      candidatureId: candidature1.id,
     },
-  });
+  })
 
-  // <-- C'EST ICI, à la fin de main(), que se trouve console.log
-  console.log("Données de test créées :");
-  console.log({
-    etudiantId: etudiant.id,
-    entrepriseId: entreprise.id,
-    encadreurId: encadreur.id,
-    adminId: admin.id,
-    stageId: stage.id,
-  });
+  // ── Notification ──
+  await prisma.notification.create({
+    data: {
+      message: 'Votre candidature pour "Stage développeur Full Stack" a été acceptée.',
+      type: 'CANDIDATURE',
+      userId: etudiant.id,
+    },
+  })
+
+  console.log('✅ Seed terminé')
+  console.log('Comptes (mot de passe : password123) :')
+  console.log('  admin@ipd.sn    → ADMIN (déjà en base)')
+  console.log('  atos@test.sn    → ENTREPRISE')
+  console.log('  fatou@test.sn   → ETUDIANT')
+  console.log('  sow@ipd.sn      → ENCADREUR')
 }
 
 main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+  .catch((e) => { console.error(e); process.exit(1) })
+  .finally(() => prisma.$disconnect())
