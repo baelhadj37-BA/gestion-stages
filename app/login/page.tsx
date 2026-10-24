@@ -12,12 +12,6 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 
-/* ─────────────────────────────────────────────────────────────
-   Dimensions de la maquette : 1536 × 818 px.
-   u(px) convertit une mesure de la maquette en unité "cqw"
-   (1 % de la largeur du cadre), ce qui fait que toute la page
-   se redimensionne comme une image, avec les mêmes proportions.
-   ───────────────────────────────────────────────────────────── */
 const W = 1536
 const H = 818
 const u = (px: number) => `${((px / W) * 100).toFixed(4)}cqw`
@@ -33,8 +27,6 @@ const PAGE_BG =
   'radial-gradient(ellipse 38% 48% at 0% 100%, rgba(140,185,255,0.55) 0%, transparent 70%),' +
   'radial-gradient(ellipse 34% 44% at 100% 0%, rgba(170,205,255,0.45) 0%, transparent 70%),' +
   'linear-gradient(135deg, #eaf2ff 0%, #f4f8ff 50%, #e3eeff 100%)'
-
-/* ───────── Icônes ───────── */
 
 function Svg({ size, sw = 1.6, children }: { size: number; sw?: number; children: ReactNode }) {
   return (
@@ -107,8 +99,6 @@ const IconChart = () => (
   </Svg>
 )
 
-/* ───────── Style commun des champs ───────── */
-
 const fieldStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
@@ -136,8 +126,6 @@ const inputClass =
 const focusClass =
   'focus-within:border-[#4a8cf0] focus-within:shadow-[0_0_0_0.25cqw_rgba(74,140,240,0.2)]'
 
-/* ───────── Page de connexion ───────── */
-
 export default function LoginPage() {
   const router = useRouter()
 
@@ -149,7 +137,6 @@ export default function LoginPage() {
   const [erreur, setErreur] = useState('')
   const [chargement, setChargement] = useState(false)
 
-  /* Restaurer l'email mémorisé */
   useEffect(() => {
     try {
       const saved = localStorage.getItem('rememberedEmail')
@@ -158,11 +145,10 @@ export default function LoginPage() {
         souvenirRef.current.checked = true
       }
     } catch {
-      // Le formulaire reste utilisable si le stockage est indisponible.
+      // stockage indisponible
     }
   }, [])
 
-  /* Authentification */
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (chargement) return
@@ -192,8 +178,11 @@ export default function LoginPage() {
         return
       }
 
+      // ── Stockage du token et des infos utilisateur ──
       localStorage.setItem('token', data.token)
       localStorage.setItem('user', JSON.stringify(data.utilisateur))
+      localStorage.setItem('role', data.utilisateur.role)  // ← AJOUT pour Astou
+      document.cookie = `token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict`  // ← AJOUT pour le middleware
 
       if (souvenir) localStorage.setItem('rememberedEmail', email)
       else localStorage.removeItem('rememberedEmail')
@@ -212,7 +201,7 @@ export default function LoginPage() {
           router.push('/dashboard/encadreur')
           break
         default:
-          setErreur('Le rôle de cet utilisateur n’est pas reconnu.')
+          setErreur("Le rôle de cet utilisateur n'est pas reconnu.")
       }
     } catch {
       setErreur('Impossible de contacter le serveur. Vérifiez votre connexion.')
@@ -233,7 +222,6 @@ export default function LoginPage() {
         background: PAGE_BG,
       }}
     >
-      {/* Conteneur : mêmes proportions que la maquette */}
       <div
         style={{
           position: 'relative',
@@ -243,7 +231,6 @@ export default function LoginPage() {
           containerType: 'inline-size',
         }}
       >
-        {/* Carte arrondie */}
         <div
           style={{
             position: 'absolute',
@@ -270,7 +257,6 @@ export default function LoginPage() {
               backgroundPosition: '40% 60%',
             }}
           >
-            {/* Logo */}
             <div
               style={{
                 ...at(72, 23),
@@ -292,7 +278,6 @@ export default function LoginPage() {
               />
             </div>
 
-            {/* Trait vertical */}
             <div
               style={{
                 ...at(240, 50),
@@ -302,7 +287,6 @@ export default function LoginPage() {
               }}
             />
 
-            {/* Nom de l'établissement */}
             <div
               style={{
                 ...at(263, 49),
@@ -316,7 +300,6 @@ export default function LoginPage() {
               <div style={{ fontWeight: 400 }}>Thomas Sankara</div>
             </div>
 
-            {/* Slogan */}
             <div
               style={{
                 ...at(76, 179),
@@ -325,11 +308,10 @@ export default function LoginPage() {
                 fontStyle: 'italic',
               }}
             >
-              <div style={{ fontWeight: 700 }}>Former aujourd’hui</div>
+              <div style={{ fontWeight: 700 }}>Former aujourd&apos;hui</div>
               <div style={{ fontWeight: 300 }}>les talents de demain</div>
             </div>
 
-            {/* Trait sous le slogan */}
             <div
               style={{
                 ...at(76, 264),
@@ -339,7 +321,6 @@ export default function LoginPage() {
               }}
             />
 
-            {/* Fonctionnalités en bas */}
             <div
               style={{
                 ...at(60, 761),
@@ -414,7 +395,6 @@ export default function LoginPage() {
               overflow: 'hidden',
             }}
           >
-            {/* Vague bleue en bas à droite */}
             <div
               aria-hidden="true"
               style={{
@@ -448,7 +428,7 @@ export default function LoginPage() {
             <circle cx="108" cy="64" r="4" fill="#0f3f9a" />
           </svg>
 
-          {/* « Ensemble vers l'excellence » */}
+          {/* Ensemble vers l'excellence */}
           <div
             style={{
               ...at(1399, 90),
@@ -462,7 +442,7 @@ export default function LoginPage() {
             }}
           >
             <div>Ensemble vers</div>
-            <div style={{ paddingLeft: u(16) }}>l’excellence</div>
+            <div style={{ paddingLeft: u(16) }}>l&apos;excellence</div>
           </div>
           <svg
             viewBox="0 0 100 22"
@@ -706,7 +686,7 @@ export default function LoginPage() {
               color: '#41506e',
             }}
           >
-            Vous n’avez pas de compte ?{' '}
+            Vous n&apos;avez pas de compte ?{' '}
             <Link
               href="/register"
               style={{
@@ -716,7 +696,7 @@ export default function LoginPage() {
                 textUnderlineOffset: u(4),
               }}
             >
-              S’inscrire
+              S&apos;inscrire
             </Link>
           </p>
         </div>

@@ -13,9 +13,11 @@ import {
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 
-/* ───────── Types ───────── */
+/* ─────────── Types ─────────── */
 
 type Statut = 'EN_ATTENTE' | 'ACCEPTEE' | 'REFUSEE'
+type StatutConvention = 'ETAPE_ETUDIANT' | 'ETAPE_ENTREPRISE' | 'ETAPE_ADMIN' | 'VALIDEE' | 'REJETEE'
+type StatutStage = 'EN_COURS' | 'TERMINE' | 'ABANDONNE'
 
 type Vue =
   | 'dashboard'
@@ -73,7 +75,105 @@ interface OffreAttente {
   entreprise: { nom: string; prenom: string; secteur: string | null } | null
 }
 
-/* ───────── Mise à l'échelle ─────────
+interface Candidature {
+  id: number
+  cvUrl: string
+  lettreUrl: string | null
+  statut: Statut
+  score: number
+  createdAt: string
+  etudiant: {
+    id: number
+    nom: string
+    prenom: string
+    email: string
+    classe: string | null
+    filiere: string | null
+  } | null
+  offre: {
+    id: number
+    titre: string
+    duree: string
+    localisation: string
+    entreprise: { id: number; nom: string; prenom: string } | null
+  } | null
+}
+
+interface Convention {
+  id: number
+  statut: StatutConvention
+  pdfUrl: string | null
+  motifRejet: string | null
+  dateValidation: string | null
+  createdAt: string
+  stage: {
+    id: number
+    dateDebut: string
+    dateFin: string
+    candidature: {
+      etudiant: { id: number; nom: string; prenom: string; email: string; classe: string | null; filiere: string | null }
+      offre: {
+        titre: string
+        duree: string
+        entreprise: { id: number; nom: string; prenom: string; secteur: string | null } | null
+      }
+    }
+  }
+}
+
+interface JournalAlerte {
+  id: number
+  semaine: number
+  statut: string
+  alerte: boolean
+  dateDepot: string
+  commentaire: string | null
+  stage: {
+    etudiant: { id: number; nom: string; prenom: string }
+    candidature: {
+      offre: { titre: string; entreprise: { nom: string; prenom: string } | null }
+    }
+  }
+}
+
+interface StageRapport {
+  id: number
+  dateDebut: string
+  dateFin: string
+  note: number | null
+  statut: StatutStage
+  createdAt: string
+  etudiant: { id: number; nom: string; prenom: string; email: string; classe: string | null; filiere: string | null }
+  encadreur: { id: number; nom: string; prenom: string; email: string }
+  candidature: {
+    offre: {
+      titre: string
+      duree: string
+      localisation: string
+      entreprise: { id: number; nom: string; prenom: string } | null
+    }
+  }
+  journaux: { id: number; semaine: number; statut: string; alerte: boolean; dateDepot: string }[]
+}
+
+interface RapportStats {
+  total: number
+  enCours: number
+  termines: number
+  moyenneNote: number | null
+  nbAlertes: number
+}
+
+interface ProfilAdmin {
+  id: number
+  nom: string
+  prenom: string
+  email: string
+  telephone: string | null
+  createdAt: string
+}
+
+/* ─────────── Mise à l'échelle ───────────
    La page est dessinée pour une largeur de 1672 px (celle de la maquette),
    puis agrandie ou réduite pour remplir la fenêtre, comme une image. */
 
@@ -86,7 +186,7 @@ const abonnerRedimension = (rappel: () => void) => {
 const lireLargeur = () => window.innerWidth
 const largeurServeur = () => LARGEUR_MAQUETTE
 
-/* ───────── Icônes ───────── */
+/* ─────────── Icônes ─────────── */
 
 const ICONS = {
   grid: (
@@ -173,6 +273,20 @@ const ICONS = {
   ),
   chevronDown: <path d="M6 9l6 6 6-6" />,
   logout: <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />,
+  check: <path d="M20 6L9 17l-5-5" />,
+  x: <path d="M18 6L6 18M6 6l12 12" />,
+  filter: (
+    <>
+      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+    </>
+  ),
+  externalLink: (
+    <>
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <polyline points="15 3 21 3 21 9" />
+      <line x1="10" y1="14" x2="21" y2="3" />
+    </>
+  ),
 } satisfies Record<string, ReactNode>
 
 type IconName = keyof typeof ICONS
@@ -196,7 +310,7 @@ function Icon({ name, size = 22, sw = 1.8 }: { name: IconName; size?: number; sw
   )
 }
 
-/* ───────── Constantes de style ───────── */
+/* ─────────── Constantes de style ─────────── */
 
 const NAVY = '#0b2f7a'
 const BLUE = '#1d6fe8'
@@ -248,7 +362,7 @@ const styleRole = (role: string) =>
         ? { fond: '#d9f5e3', texte: '#15803d' }
         : { fond: '#eadffc', texte: '#6d28d9' }
 
-/* ───────── Courbe d'évolution (SVG, sans dépendance) ───────── */
+/* ─────────── Courbe d'évolution (SVG, sans dépendance) ─────────── */
 
 function Courbe({ serie }: { serie: { date: string; total: number }[] }) {
   const W = 600
@@ -327,7 +441,7 @@ function Courbe({ serie }: { serie: { date: string; total: number }[] }) {
   )
 }
 
-/* ───────── Page ───────── */
+/* ─────────── Page ─────────── */
 
 export default function AdminDashboard() {
   const router = useRouter()
@@ -343,6 +457,43 @@ export default function AdminDashboard() {
   const [chargement, setChargement] = useState(true)
   const [erreur, setErreur] = useState('')
   const [recharge, setRecharge] = useState(0)
+
+  // ── Candidatures ──
+  const [candidatures, setCandidatures] = useState<Candidature[]>([])
+  // ── Rapports ──
+  const [rapportStats, setRapportStats] = useState<RapportStats | null>(null)
+  const [stages, setStages] = useState<StageRapport[]>([])
+  const [alertesJournaux, setAlertesJournaux] = useState<JournalAlerte[]>([])
+  const [chargementRapports, setChargementRapports] = useState(false)
+  const [erreurRapports, setErreurRapports] = useState('')
+  const [filtreStages, setFiltreStages] = useState<StatutStage | 'TOUS'>('TOUS')
+  const [ongletRapport, setOngletRapport] = useState<'stages' | 'alertes'>('stages')
+  const [noteEdit, setNoteEdit] = useState<{ id: number; valeur: string } | null>(null)
+  const [enregistrementNote, setEnregistrementNote] = useState(false)
+  // ── Paramètres ──
+  const [profilAdmin, setProfilAdmin] = useState<ProfilAdmin | null>(null)
+  const [chargementParametres, setChargementParametres] = useState(false)
+  const [erreurParametres, setErreurParametres] = useState('')
+  const [succesParametres, setSuccesParametres] = useState('')
+  const [formProfil, setFormProfil] = useState({ nom: '', prenom: '', email: '', telephone: '' })
+  const [enregistrementProfil, setEnregistrementProfil] = useState(false)
+  const [formMdp, setFormMdp] = useState({ ancien: '', nouveau: '', confirmation: '' })
+  const [enregistrementMdp, setEnregistrementMdp] = useState(false)
+  const [erreurMdp, setErreurMdp] = useState('')
+  const [succesMdp, setSuccesMdp] = useState('')
+  const [ongletParametres, setOngletParametres] = useState<'profil' | 'securite'>('profil')
+  // ── Conventions ──
+  const [conventions, setConventions] = useState<Convention[]>([])
+  const [chargementConventions, setChargementConventions] = useState(false)
+  const [erreurConventions, setErreurConventions] = useState('')
+  const [filtreConventions, setFiltreConventions] = useState<StatutConvention | 'TOUTES'>('TOUTES')
+  const [actionConventionId, setActionConventionId] = useState<number | null>(null)
+  const [motifRejet, setMotifRejet] = useState('')
+  const [convRejetId, setConvRejetId] = useState<number | null>(null)
+  const [chargementCandidatures, setChargementCandidatures] = useState(false)
+  const [erreurCandidatures, setErreurCandidatures] = useState('')
+  const [filtreCandidatures, setFiltreCandidatures] = useState<Statut | 'TOUTES'>('TOUTES')
+  const [changementStatutId, setChangementStatutId] = useState<number | null>(null)
 
   const largeur = useSyncExternalStore(abonnerRedimension, lireLargeur, largeurServeur)
 
@@ -413,6 +564,39 @@ export default function AdminDashboard() {
     charger()
   }, [router, jours, recharge])
 
+  // Charger les candidatures quand on bascule vers cette vue
+  useEffect(() => {
+    if (vue !== 'candidatures') return
+    const token = localStorage.getItem('token')
+    if (!token) return
+
+    const chargerCandidatures = async () => {
+      setChargementCandidatures(true)
+      setErreurCandidatures('')
+      try {
+        const res = await fetch('/api/candidatures', {
+          headers: { authorization: `Bearer ${token}` },
+        })
+        if (res.status === 401 || res.status === 403) {
+          router.push('/login')
+          return
+        }
+        if (!res.ok) {
+          setErreurCandidatures('Impossible de charger les candidatures.')
+          return
+        }
+        const data = await res.json()
+        setCandidatures(data.candidatures || [])
+      } catch {
+        setErreurCandidatures('Impossible de contacter le serveur.')
+      } finally {
+        setChargementCandidatures(false)
+      }
+    }
+
+    chargerCandidatures()
+  }, [vue, router])
+
   const seDeconnecter = () => {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
@@ -438,6 +622,261 @@ export default function AdminDashboard() {
       setRecharge((r) => r + 1)
     } catch {
       setErreur('Impossible de contacter le serveur.')
+    }
+  }
+
+  // Charger les conventions quand on bascule vers cette vue
+  useEffect(() => {
+    if (vue !== 'conventions') return
+    const token = localStorage.getItem('token')
+    if (!token) return
+
+    const chargerConventions = async () => {
+      setChargementConventions(true)
+      setErreurConventions('')
+      try {
+        const res = await fetch('/api/conventions', {
+          headers: { authorization: `Bearer ${token}` },
+        })
+        if (res.status === 401 || res.status === 403) { router.push('/login'); return }
+        if (!res.ok) { setErreurConventions('Impossible de charger les conventions.'); return }
+        const data = await res.json()
+        setConventions(data.data || [])
+      } catch {
+        setErreurConventions('Impossible de contacter le serveur.')
+      } finally {
+        setChargementConventions(false)
+      }
+    }
+
+    chargerConventions()
+  }, [vue, router])
+
+  // Charger les rapports quand on bascule vers cette vue
+  useEffect(() => {
+    if (vue !== 'rapports') return
+    const token = localStorage.getItem('token')
+    if (!token) return
+
+    const chargerRapports = async () => {
+      setChargementRapports(true)
+      setErreurRapports('')
+      try {
+        const res = await fetch('/api/admin/rapports', {
+          headers: { authorization: `Bearer ${token}` },
+        })
+        if (res.status === 401 || res.status === 403) { router.push('/login'); return }
+        if (!res.ok) { setErreurRapports('Impossible de charger les rapports.'); return }
+        const data = await res.json()
+        setRapportStats(data.stats)
+        setStages(data.stages || [])
+        setAlertesJournaux(data.alertes || [])
+      } catch {
+        setErreurRapports('Impossible de contacter le serveur.')
+      } finally {
+        setChargementRapports(false)
+      }
+    }
+    chargerRapports()
+  }, [vue, router])
+
+  // Charger le profil admin quand on bascule vers Paramètres
+  useEffect(() => {
+    if (vue !== 'parametres') return
+    const token = localStorage.getItem('token')
+    if (!token) return
+
+    const chargerParametres = async () => {
+      setChargementParametres(true)
+      setErreurParametres('')
+      try {
+        const res = await fetch('/api/admin/parametres', { headers: { authorization: `Bearer ${token}` } })
+        if (res.status === 401 || res.status === 403) { router.push('/login'); return }
+        if (!res.ok) { setErreurParametres('Impossible de charger les paramètres.'); return }
+        const data = await res.json()
+        setProfilAdmin(data.profil)
+        setFormProfil({
+          nom: data.profil.nom || '',
+          prenom: data.profil.prenom || '',
+          email: data.profil.email || '',
+          telephone: data.profil.telephone || '',
+        })
+      } catch {
+        setErreurParametres('Impossible de contacter le serveur.')
+      } finally {
+        setChargementParametres(false)
+      }
+    }
+    chargerParametres()
+  }, [vue, router])
+
+  const enregistrerNote = async () => {
+    if (!noteEdit) return
+    const note = parseFloat(noteEdit.valeur.replace(',', '.'))
+    if (isNaN(note) || note < 0 || note > 20) {
+      setErreurRapports('La note doit être un nombre entre 0 et 20.')
+      return
+    }
+    const token = localStorage.getItem('token')
+    setEnregistrementNote(true)
+    try {
+      const res = await fetch('/api/admin/rapports', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ stageId: noteEdit.id, note }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        setErreurRapports(err?.message || 'Impossible d\'enregistrer la note.')
+        return
+      }
+      setStages((prev) => prev.map((s) => s.id === noteEdit.id ? { ...s, note } : s))
+      if (rapportStats) {
+        const toutesNotes = stages.map((s) => s.id === noteEdit.id ? note : s.note).filter((n): n is number => n !== null)
+        const moy = toutesNotes.length > 0 ? toutesNotes.reduce((a, b) => a + b, 0) / toutesNotes.length : null
+        setRapportStats({ ...rapportStats, moyenneNote: moy })
+      }
+      setNoteEdit(null)
+    } catch {
+      setErreurRapports('Impossible de contacter le serveur.')
+    } finally {
+      setEnregistrementNote(false)
+    }
+  }
+
+  const enregistrerProfil = async () => {
+    setSuccesParametres('')
+    setErreurParametres('')
+    if (!formProfil.nom.trim() || !formProfil.prenom.trim() || !formProfil.email.trim()) {
+      setErreurParametres('Nom, prénom et email sont requis.')
+      return
+    }
+    const token = localStorage.getItem('token')
+    setEnregistrementProfil(true)
+    try {
+      const res = await fetch('/api/admin/parametres', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(formProfil),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) { setErreurParametres(data?.message || 'Erreur lors de la mise à jour.'); return }
+      setProfilAdmin(data.profil)
+      setSuccesParametres('Profil mis à jour avec succès.')
+    } catch {
+      setErreurParametres('Impossible de contacter le serveur.')
+    } finally {
+      setEnregistrementProfil(false)
+    }
+  }
+
+  const changerMotDePasse = async () => {
+    setErreurMdp('')
+    setSuccesMdp('')
+    if (!formMdp.ancien || !formMdp.nouveau || !formMdp.confirmation) {
+      setErreurMdp('Tous les champs sont requis.')
+      return
+    }
+    if (formMdp.nouveau.length < 8) {
+      setErreurMdp('Le nouveau mot de passe doit contenir au moins 8 caractères.')
+      return
+    }
+    if (formMdp.nouveau !== formMdp.confirmation) {
+      setErreurMdp('La confirmation ne correspond pas au nouveau mot de passe.')
+      return
+    }
+    const token = localStorage.getItem('token')
+    setEnregistrementMdp(true)
+    try {
+      const res = await fetch('/api/admin/parametres', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ancienMotDePasse: formMdp.ancien, nouveauMotDePasse: formMdp.nouveau }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) { setErreurMdp(data?.message || 'Erreur lors du changement.'); return }
+      setSuccesMdp('Mot de passe changé avec succès.')
+      setFormMdp({ ancien: '', nouveau: '', confirmation: '' })
+    } catch {
+      setErreurMdp('Impossible de contacter le serveur.')
+    } finally {
+      setEnregistrementMdp(false)
+    }
+  }
+
+  const validerConvention = async (id: number) => {
+    const token = localStorage.getItem('token')
+    setActionConventionId(id)
+    try {
+      const res = await fetch(`/api/conventions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: 'VALIDER' }),
+      })
+      if (res.status === 401 || res.status === 403) { seDeconnecter(); return }
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        setErreurConventions(err?.message || 'Impossible de valider la convention.')
+        return
+      }
+      setConventions((prev) => prev.map((c) => c.id === id ? { ...c, statut: 'VALIDEE', dateValidation: new Date().toISOString() } : c))
+    } catch {
+      setErreurConventions('Impossible de contacter le serveur.')
+    } finally {
+      setActionConventionId(null)
+    }
+  }
+
+  const rejeterConvention = async (id: number, motif: string) => {
+    const token = localStorage.getItem('token')
+    setActionConventionId(id)
+    try {
+      const res = await fetch(`/api/conventions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: 'REJETER', motifRejet: motif }),
+      })
+      if (res.status === 401 || res.status === 403) { seDeconnecter(); return }
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        setErreurConventions(err?.message || 'Impossible de rejeter la convention.')
+        return
+      }
+      setConventions((prev) => prev.map((c) => c.id === id ? { ...c, statut: 'REJETEE', motifRejet: motif } : c))
+      setConvRejetId(null)
+      setMotifRejet('')
+    } catch {
+      setErreurConventions('Impossible de contacter le serveur.')
+    } finally {
+      setActionConventionId(null)
+    }
+  }
+
+  const changerStatutCandidature = async (id: number, statut: Statut) => {
+    const token = localStorage.getItem('token')
+    setChangementStatutId(id)
+    try {
+      const res = await fetch('/api/candidatures', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ id, statut }),
+      })
+      if (res.status === 401 || res.status === 403) {
+        seDeconnecter()
+        return
+      }
+      if (!res.ok) {
+        setErreurCandidatures('Impossible de modifier le statut.')
+        return
+      }
+      // Mettre à jour localement
+      setCandidatures((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, statut } : c))
+      )
+    } catch {
+      setErreurCandidatures('Impossible de contacter le serveur.')
+    } finally {
+      setChangementStatutId(null)
     }
   }
 
@@ -472,6 +911,12 @@ export default function AdminDashboard() {
       )
     : offres
 
+  // Candidatures filtrées par statut
+  const candidaturesFiltrees =
+    filtreCandidatures === 'TOUTES'
+      ? candidatures
+      : candidatures.filter((c) => c.statut === filtreCandidatures)
+
   const dateTexte = dash
     ? new Date(dash.dateServeur)
         .toLocaleDateString('fr-FR', {
@@ -496,6 +941,18 @@ export default function AdminDashboard() {
 
   const th: CSSProperties = { padding: '13px 16px', fontWeight: 600, color: '#5f6d8a', fontSize: 12.5 }
   const titrePage: CSSProperties = { margin: 0, fontSize: 30, fontWeight: 800, color: NAVY, lineHeight: 1.2 }
+
+  // Compteurs par statut pour les candidatures
+  const nbEnAttente = candidatures.filter((c) => c.statut === 'EN_ATTENTE').length
+  const nbAcceptees = candidatures.filter((c) => c.statut === 'ACCEPTEE').length
+  const nbRefusees = candidatures.filter((c) => c.statut === 'REFUSEE').length
+
+  // Stages filtrés
+  const stagesFiltres = filtreStages === 'TOUS' ? stages : stages.filter((s) => s.statut === filtreStages)
+
+  // Conventions filtrées
+  const conventionsFiltrees = filtreConventions === 'TOUTES' ? conventions : conventions.filter((c) => c.statut === filtreConventions)
+  const nbConvEtapeAdmin = conventions.filter((c) => c.statut === 'ETAPE_ADMIN').length
 
   return (
     <div
@@ -608,7 +1065,7 @@ export default function AdminDashboard() {
             >
               Ensemble pour
               <br />
-              l’avenir de nos étudiants
+              l&apos;avenir de nos étudiants
             </p>
             <svg
               viewBox="0 0 200 40"
@@ -813,7 +1270,7 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* ───────── TABLEAU DE BORD ───────── */}
+          {/* ─────────── TABLEAU DE BORD ─────────── */}
           {vue === 'dashboard' && dash && (
             <>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '0 0 0 11px' }}>
@@ -826,7 +1283,7 @@ export default function AdminDashboard() {
                   </svg>
                   <div>
                     <h1 style={titrePage}>Tableau de bord</h1>
-                    <p style={{ margin: '3px 0 0', fontSize: 16, color: '#2f55b0' }}>Vue d’ensemble de la plateforme</p>
+                    <p style={{ margin: '3px 0 0', fontSize: 16, color: '#2f55b0' }}>Vue d&apos;ensemble de la plateforme</p>
                   </div>
                 </div>
 
@@ -972,7 +1429,7 @@ export default function AdminDashboard() {
                     <span style={{ color: BLUE, display: 'flex', marginTop: 1 }}><Icon name="info" size={20} /></span>
                     <p style={{ margin: 0 }}>
                       {variation === null ? (
-                        <>Pas encore de période précédente pour comparer l’évolution des candidatures.</>
+                        <>Pas encore de période précédente pour comparer l&apos;évolution des candidatures.</>
                       ) : variation > 0 ? (
                         <>La plateforme enregistre une hausse de <b style={{ color: BLUE }}>{variation}%</b> des candidatures au cours des {dash.evolution.jours} derniers jours.</>
                       ) : variation < 0 ? (
@@ -1075,7 +1532,7 @@ export default function AdminDashboard() {
             </>
           )}
 
-          {/* ───────── UTILISATEURS ───────── */}
+          {/* ─────────── UTILISATEURS ─────────── */}
           {vue === 'utilisateurs' && (
             <>
               <h1 style={titrePage}>Gestion des utilisateurs</h1>
@@ -1134,7 +1591,7 @@ export default function AdminDashboard() {
             </>
           )}
 
-          {/* ───────── OFFRES EN ATTENTE ───────── */}
+          {/* ─────────── OFFRES EN ATTENTE ─────────── */}
           {vue === 'offres' && (
             <>
               <h1 style={titrePage}>Offres en attente de validation</h1>
@@ -1144,7 +1601,7 @@ export default function AdminDashboard() {
 
               {offresFiltrees.length === 0 ? (
                 <section style={{ ...CARTE, padding: 40, textAlign: 'center' }}>
-                  <p style={{ margin: 0, fontSize: 36 }}>💼</p>
+                  <p style={{ margin: 0, fontSize: 36 }}>🎉</p>
                   <p style={{ margin: '8px 0 0', fontWeight: 600, color: NAVY }}>Aucune offre en attente pour le moment</p>
                   <p style={{ margin: '4px 0 0', fontSize: 14, color: MUTED }}>
                     Les offres publiées par les entreprises apparaîtront ici.
@@ -1190,18 +1647,944 @@ export default function AdminDashboard() {
             </>
           )}
 
-          {/* ───────── SECTIONS PAS ENCORE DISPONIBLES ───────── */}
-          {(vue === 'candidatures' || vue === 'conventions' || vue === 'rapports' || vue === 'parametres') && (
+          {/* ─────────── CANDIDATURES ─────────── */}
+          {vue === 'candidatures' && (
             <>
-              <h1 style={titrePage}>{NAV.find((n) => n.id === vue)?.label}</h1>
-              <section style={{ ...CARTE, marginTop: 24, padding: 40, textAlign: 'center' }}>
-                <p style={{ margin: 0, fontSize: 36 }}>🚧</p>
-                <p style={{ margin: '8px 0 0', fontWeight: 600, color: NAVY }}>
-                  Cette section sera disponible prochainement
-                </p>
-              </section>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 24 }}>
+                <div>
+                  <h1 style={titrePage}>Candidatures</h1>
+                  <p style={{ margin: '4px 0 0', fontSize: 16, color: '#2f55b0' }}>
+                    {candidaturesFiltrees.length} candidature(s)
+                    {filtreCandidatures !== 'TOUTES' ? ` · filtre : ${STATUTS[filtreCandidatures].label}` : ' au total'}
+                  </p>
+                </div>
+
+                {/* Compteurs + filtres */}
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  {([
+                    { id: 'TOUTES', label: 'Toutes', nb: candidatures.length, fond: '#f1f5fb', texte: NAVY },
+                    { id: 'EN_ATTENTE', label: 'En attente', nb: nbEnAttente, fond: '#dbe8fd', texte: '#1d56c9' },
+                    { id: 'ACCEPTEE', label: 'Acceptées', nb: nbAcceptees, fond: '#d9f5e3', texte: '#15803d' },
+                    { id: 'REFUSEE', label: 'Refusées', nb: nbRefusees, fond: '#fde2e2', texte: '#b91c1c' },
+                  ] as const).map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => setFiltreCandidatures(f.id)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '7px 16px',
+                        borderRadius: 999,
+                        border: filtreCandidatures === f.id ? `2px solid ${f.texte}` : '2px solid transparent',
+                        background: f.fond,
+                        color: f.texte,
+                        fontSize: 13.5,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {f.label}
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          minWidth: 22,
+                          height: 22,
+                          borderRadius: 999,
+                          background: 'rgba(0,0,0,0.08)',
+                          fontSize: 12,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {f.nb}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {erreurCandidatures && (
+                <div
+                  role="alert"
+                  style={{
+                    marginBottom: 16,
+                    padding: '12px 20px',
+                    borderRadius: 10,
+                    background: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    color: '#b91c1c',
+                    fontSize: 14,
+                  }}
+                >
+                  {erreurCandidatures}
+                </div>
+              )}
+
+              {chargementCandidatures ? (
+                <section style={{ ...CARTE, padding: 40, textAlign: 'center' }}>
+                  <p style={{ margin: 0, color: MUTED, fontSize: 15 }}>Chargement des candidatures…</p>
+                </section>
+              ) : candidaturesFiltrees.length === 0 ? (
+                <section style={{ ...CARTE, padding: 40, textAlign: 'center' }}>
+                  <p style={{ margin: 0, fontSize: 36 }}>📋</p>
+                  <p style={{ margin: '8px 0 0', fontWeight: 600, color: NAVY }}>
+                    {filtreCandidatures === 'TOUTES'
+                      ? 'Aucune candidature pour le moment'
+                      : `Aucune candidature ${STATUTS[filtreCandidatures as Statut].label.toLowerCase()}`}
+                  </p>
+                  <p style={{ margin: '4px 0 0', fontSize: 14, color: MUTED }}>
+                    Les candidatures des étudiants apparaîtront ici.
+                  </p>
+                </section>
+              ) : (
+                <section style={{ ...CARTE, overflow: 'hidden' }}>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', minWidth: 750, borderCollapse: 'collapse', textAlign: 'left', fontSize: 13 }}>
+                      <thead style={{ background: '#f4f7fc' }}>
+                        <tr>
+                          {['Étudiant', 'Offre de stage', 'Entreprise', 'Date', 'Statut', 'Documents', 'Action'].map((h) => (
+                            <th key={h} style={th}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {candidaturesFiltrees.map((c) => {
+                          const s = STATUTS[c.statut]
+                          const nomEtudiant = c.etudiant
+                            ? `${c.etudiant.prenom} ${c.etudiant.nom}`.trim()
+                            : 'Inconnu'
+                          const nomEntreprise = c.offre?.entreprise
+                            ? `${c.offre.entreprise.nom} ${c.offre.entreprise.prenom}`.trim()
+                            : '—'
+                          const enCoursDeChangement = changementStatutId === c.id
+
+                          return (
+                            <tr key={c.id} style={{ borderTop: '1px solid #eef2fa' }}>
+                              {/* Étudiant */}
+                              <td style={{ padding: '14px 16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                  <span
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      width: 34,
+                                      height: 34,
+                                      flexShrink: 0,
+                                      borderRadius: '50%',
+                                      background: COULEURS_AVATAR[c.id % COULEURS_AVATAR.length],
+                                      color: '#fff',
+                                      fontSize: 12,
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    {initiales(nomEtudiant)}
+                                  </span>
+                                  <div>
+                                    <div style={{ fontWeight: 600, color: NAVY, fontSize: 13 }}>{nomEtudiant}</div>
+                                    {c.etudiant?.email && (
+                                      <div style={{ fontSize: 11.5, color: MUTED, marginTop: 1 }}>{c.etudiant.email}</div>
+                                    )}
+                                    {c.etudiant?.classe && (
+                                      <div style={{ fontSize: 11.5, color: MUTED }}>{c.etudiant.classe}</div>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Offre */}
+                              <td style={{ padding: '14px 16px' }}>
+                                <div style={{ fontWeight: 600, color: '#2d3b5a', fontSize: 13 }}>
+                                  {c.offre?.titre ?? '—'}
+                                </div>
+                                {c.offre?.duree && (
+                                  <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{c.offre.duree}</div>
+                                )}
+                              </td>
+
+                              {/* Entreprise */}
+                              <td style={{ padding: '14px 16px', color: MUTED, fontSize: 13 }}>
+                                {nomEntreprise}
+                              </td>
+
+                              {/* Date */}
+                              <td style={{ padding: '14px 16px', color: MUTED, whiteSpace: 'nowrap', fontSize: 13 }}>
+                                {formatDate(c.createdAt)}
+                              </td>
+
+                              {/* Statut */}
+                              <td style={{ padding: '14px 16px' }}>
+                                <span
+                                  style={{
+                                    display: 'inline-block',
+                                    padding: '5px 13px',
+                                    borderRadius: 999,
+                                    background: s.fond,
+                                    color: s.texte,
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {s.label}
+                                </span>
+                              </td>
+
+                              {/* Documents */}
+                              <td style={{ padding: '14px 16px' }}>
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                  <a
+                                    href={c.cvUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 5,
+                                      padding: '4px 10px',
+                                      borderRadius: 6,
+                                      background: '#eef4ff',
+                                      color: BLUE,
+                                      fontSize: 12,
+                                      fontWeight: 600,
+                                      textDecoration: 'none',
+                                    }}
+                                  >
+                                    <Icon name="doc" size={14} />
+                                    CV
+                                  </a>
+                                  {c.lettreUrl && (
+                                    <a
+                                      href={c.lettreUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: 5,
+                                        padding: '4px 10px',
+                                        borderRadius: 6,
+                                        background: '#eadffc',
+                                        color: '#7c3aed',
+                                        fontSize: 12,
+                                        fontWeight: 600,
+                                        textDecoration: 'none',
+                                      }}
+                                    >
+                                      <Icon name="doc" size={14} />
+                                      LM
+                                    </a>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* Actions */}
+                              <td style={{ padding: '14px 16px' }}>
+                                {enCoursDeChangement ? (
+                                  <span style={{ fontSize: 12, color: MUTED }}>…</span>
+                                ) : c.statut === 'EN_ATTENTE' ? (
+                                  <div style={{ display: 'flex', gap: 8 }}>
+                                    <button
+                                      onClick={() => changerStatutCandidature(c.id, 'ACCEPTEE')}
+                                      title="Accepter"
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        width: 32,
+                                        height: 32,
+                                        borderRadius: 8,
+                                        border: 'none',
+                                        background: '#d9f5e3',
+                                        color: '#15803d',
+                                        cursor: 'pointer',
+                                      }}
+                                    >
+                                      <Icon name="check" size={16} sw={2.5} />
+                                    </button>
+                                    <button
+                                      onClick={() => changerStatutCandidature(c.id, 'REFUSEE')}
+                                      title="Refuser"
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        width: 32,
+                                        height: 32,
+                                        borderRadius: 8,
+                                        border: 'none',
+                                        background: '#fde2e2',
+                                        color: '#b91c1c',
+                                        cursor: 'pointer',
+                                      }}
+                                    >
+                                      <Icon name="x" size={16} sw={2.5} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => changerStatutCandidature(c.id, 'EN_ATTENTE')}
+                                    title="Remettre en attente"
+                                    style={{
+                                      padding: '4px 10px',
+                                      borderRadius: 6,
+                                      border: '1px solid #dfe6f3',
+                                      background: '#fff',
+                                      color: MUTED,
+                                      fontSize: 12,
+                                      fontWeight: 500,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    Remettre en attente
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
             </>
           )}
+
+          {/* ─────────── CONVENTIONS ─────────── */}
+          {vue === 'conventions' && (() => {
+            const STATUTS_CONV: Record<StatutConvention, { label: string; fond: string; texte: string }> = {
+              ETAPE_ETUDIANT:   { label: 'Étape étudiant',   fond: '#fef9c3', texte: '#a16207' },
+              ETAPE_ENTREPRISE: { label: 'Étape entreprise', fond: '#dbe8fd', texte: '#1d56c9' },
+              ETAPE_ADMIN:      { label: 'À valider',        fond: '#fde9d0', texte: '#c05622' },
+              VALIDEE:          { label: 'Validée',          fond: '#d9f5e3', texte: '#15803d' },
+              REJETEE:          { label: 'Rejetée',          fond: '#fde2e2', texte: '#b91c1c' },
+            }
+            const filtres: { id: StatutConvention | 'TOUTES'; label: string }[] = [
+              { id: 'TOUTES', label: `Toutes (${conventions.length})` },
+              { id: 'ETAPE_ADMIN', label: `À valider (${nbConvEtapeAdmin})` },
+              { id: 'ETAPE_ETUDIANT', label: 'Étape étudiant' },
+              { id: 'ETAPE_ENTREPRISE', label: 'Étape entreprise' },
+              { id: 'VALIDEE', label: 'Validées' },
+              { id: 'REJETEE', label: 'Rejetées' },
+            ]
+            return (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+                  <h1 style={titrePage}>Conventions de stage</h1>
+                  {nbConvEtapeAdmin > 0 && (
+                    <div style={{ background: '#fde9d0', color: '#c05622', borderRadius: 8, padding: '6px 14px', fontWeight: 600, fontSize: 13 }}>
+                      {nbConvEtapeAdmin} convention{nbConvEtapeAdmin > 1 ? 's' : ''} en attente de validation
+                    </div>
+                  )}
+                </div>
+
+                {erreurConventions && (
+                  <div style={{ background: '#fde2e2', color: '#b91c1c', borderRadius: 10, padding: '12px 16px', marginTop: 16, fontSize: 14 }}>
+                    {erreurConventions}
+                  </div>
+                )}
+
+                {/* Filtres */}
+                <div style={{ display: 'flex', gap: 8, marginTop: 20, flexWrap: 'wrap' }}>
+                  {filtres.map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => setFiltreConventions(f.id)}
+                      style={{
+                        padding: '7px 16px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                        background: filtreConventions === f.id ? NAVY : '#eef2fa',
+                        color: filtreConventions === f.id ? '#fff' : MUTED,
+                        transition: 'all .15s',
+                      }}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Tableau */}
+                <section style={{ ...CARTE, marginTop: 20, overflow: 'hidden' }}>
+                  {chargementConventions ? (
+                    <div style={{ padding: 48, textAlign: 'center', color: MUTED }}>Chargement…</div>
+                  ) : conventionsFiltrees.length === 0 ? (
+                    <div style={{ padding: 48, textAlign: 'center', color: MUTED }}>
+                      <p style={{ margin: 0, fontSize: 36 }}>📋</p>
+                      <p style={{ margin: '8px 0 0', fontWeight: 600, color: NAVY }}>Aucune convention trouvée</p>
+                    </div>
+                  ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid #eef2fa', background: '#f8faff' }}>
+                          <th style={th}>Étudiant</th>
+                          <th style={th}>Offre / Entreprise</th>
+                          <th style={th}>Période de stage</th>
+                          <th style={th}>Statut</th>
+                          <th style={th}>PDF</th>
+                          <th style={th}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {conventionsFiltrees.map((conv, idx) => {
+                          const etudiant = conv.stage.candidature.etudiant
+                          const offre = conv.stage.candidature.offre
+                          const entreprise = offre.entreprise
+                          const nomEtudiant = `${etudiant.prenom} ${etudiant.nom}`
+                          const couleurAv = COULEURS_AVATAR[etudiant.id % COULEURS_AVATAR.length]
+                          const s = STATUTS_CONV[conv.statut]
+                          const enAttenteAdmin = conv.statut === 'ETAPE_ADMIN'
+                          const estEnAction = actionConventionId === conv.id
+                          const estRejet = convRejetId === conv.id
+                          return (
+                            <tr key={conv.id} style={{ borderBottom: idx < conventionsFiltrees.length - 1 ? '1px solid #eef2fa' : 'none' }}>
+                              {/* Étudiant */}
+                              <td style={{ padding: '14px 16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: couleurAv, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
+                                    {initiales(nomEtudiant)}
+                                  </div>
+                                  <div>
+                                    <div style={{ fontWeight: 600, color: NAVY, fontSize: 13.5 }}>{nomEtudiant}</div>
+                                    <div style={{ fontSize: 12, color: MUTED }}>{etudiant.email}</div>
+                                    {etudiant.classe && <div style={{ fontSize: 11, color: MUTED }}>{etudiant.classe}{etudiant.filiere ? ` — ${etudiant.filiere}` : ''}</div>}
+                                  </div>
+                                </div>
+                              </td>
+                              {/* Offre / Entreprise */}
+                              <td style={{ padding: '14px 16px' }}>
+                                <div style={{ fontWeight: 600, color: NAVY, fontSize: 13.5 }}>{offre.titre}</div>
+                                <div style={{ fontSize: 12, color: MUTED }}>{offre.duree}</div>
+                                {entreprise && <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{entreprise.nom} {entreprise.prenom}</div>}
+                              </td>
+                              {/* Période */}
+                              <td style={{ padding: '14px 16px', fontSize: 13, color: MUTED }}>
+                                <div>{formatDate(conv.stage.dateDebut)}</div>
+                                <div style={{ color: '#9ca3af' }}>→</div>
+                                <div>{formatDate(conv.stage.dateFin)}</div>
+                              </td>
+                              {/* Statut */}
+                              <td style={{ padding: '14px 16px' }}>
+                                <span style={{ background: s.fond, color: s.texte, borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                  {s.label}
+                                </span>
+                                {conv.motifRejet && (
+                                  <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 4, maxWidth: 180 }} title={conv.motifRejet}>
+                                    {conv.motifRejet.length > 60 ? conv.motifRejet.slice(0, 60) + '…' : conv.motifRejet}
+                                  </div>
+                                )}
+                              </td>
+                              {/* PDF */}
+                              <td style={{ padding: '14px 16px' }}>
+                                {conv.pdfUrl ? (
+                                  <a href={conv.pdfUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#eef2fa', color: NAVY, borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 600, textDecoration: 'none' }}>
+                                    <Icon name="externalLink" size={13} /> PDF
+                                  </a>
+                                ) : (
+                                  <span style={{ color: '#c7d0e0', fontSize: 12 }}>—</span>
+                                )}
+                              </td>
+                              {/* Actions */}
+                              <td style={{ padding: '14px 16px' }}>
+                                {enAttenteAdmin ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    {estRejet ? (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                        <input
+                                          type="text"
+                                          placeholder="Motif du rejet…"
+                                          value={motifRejet}
+                                          onChange={(e) => setMotifRejet(e.target.value)}
+                                          style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid #fca5a5', fontSize: 12, outline: 'none', width: 200 }}
+                                        />
+                                        <div style={{ display: 'flex', gap: 6 }}>
+                                          <button
+                                            onClick={() => rejeterConvention(conv.id, motifRejet)}
+                                            disabled={estEnAction || !motifRejet.trim()}
+                                            style={{ flex: 1, padding: '6px 10px', borderRadius: 7, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 600, fontSize: 12, cursor: motifRejet.trim() ? 'pointer' : 'not-allowed', opacity: motifRejet.trim() ? 1 : 0.5 }}
+                                          >
+                                            Confirmer
+                                          </button>
+                                          <button onClick={() => { setConvRejetId(null); setMotifRejet('') }} style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid #e2e8f0', background: '#fff', color: MUTED, fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
+                                            Annuler
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div style={{ display: 'flex', gap: 6 }}>
+                                        <button
+                                          onClick={() => validerConvention(conv.id)}
+                                          disabled={estEnAction}
+                                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 7, border: 'none', background: '#16a34a', color: '#fff', fontWeight: 600, fontSize: 12, cursor: 'pointer', opacity: estEnAction ? 0.6 : 1 }}
+                                        >
+                                          <Icon name="check" size={13} sw={2.5} /> Valider
+                                        </button>
+                                        <button
+                                          onClick={() => setConvRejetId(conv.id)}
+                                          disabled={estEnAction}
+                                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 7, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 600, fontSize: 12, cursor: 'pointer', opacity: estEnAction ? 0.6 : 1 }}
+                                        >
+                                          <Icon name="x" size={13} sw={2.5} /> Rejeter
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span style={{ color: '#c7d0e0', fontSize: 12 }}>—</span>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </section>
+              </>
+            )
+          })()}
+
+          {/* ─────────── RAPPORTS ET ÉVALUATIONS ─────────── */}
+          {vue === 'rapports' && (() => {
+            const STATUTS_STAGE: Record<StatutStage, { label: string; fond: string; texte: string }> = {
+              EN_COURS:  { label: 'En cours',  fond: '#dbe8fd', texte: '#1d56c9' },
+              TERMINE:   { label: 'Terminé',   fond: '#d9f5e3', texte: '#15803d' },
+              ABANDONNE: { label: 'Abandonné', fond: '#fde2e2', texte: '#b91c1c' },
+            }
+            return (
+              <>
+                <h1 style={titrePage}>Rapports et évaluations</h1>
+
+                {erreurRapports && (
+                  <div style={{ background: '#fde2e2', color: '#b91c1c', borderRadius: 10, padding: '12px 16px', marginTop: 16, fontSize: 14 }}>
+                    {erreurRapports}
+                  </div>
+                )}
+
+                {/* Cartes stats */}
+                {rapportStats && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginTop: 24 }}>
+                    {[
+                      { label: 'Total stages', valeur: rapportStats.total, fond: '#dbe8fd', couleur: '#1d6fe8' },
+                      { label: 'En cours', valeur: rapportStats.enCours, fond: '#fde9d0', couleur: '#f59e0b' },
+                      { label: 'Terminés', valeur: rapportStats.termines, fond: '#d9f5e3', couleur: '#16a34a' },
+                      { label: 'Moyenne générale', valeur: rapportStats.moyenneNote !== null ? `${rapportStats.moyenneNote.toFixed(2)}/20` : '—', fond: '#eadffc', couleur: '#7c3aed' },
+                    ].map((c) => (
+                      <div key={c.label} style={{ ...CARTE, padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ width: 38, height: 38, borderRadius: 10, background: c.fond, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Icon name="chart" size={18} sw={1.8} style={{ color: c.couleur } as CSSProperties} />
+                        </div>
+                        <div style={{ fontSize: 26, fontWeight: 800, color: NAVY, marginTop: 4 }}>{c.valeur}</div>
+                        <div style={{ fontSize: 12.5, color: MUTED, fontWeight: 500 }}>{c.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Onglets */}
+                <div style={{ display: 'flex', gap: 4, marginTop: 28, borderBottom: '2px solid #eef2fa' }}>
+                  {([
+                    { id: 'stages', label: `Stages (${stages.length})` },
+                    { id: 'alertes', label: `Alertes journaux (${alertesJournaux.length})`, alerte: alertesJournaux.length > 0 },
+                  ] as const).map((o) => (
+                    <button
+                      key={o.id}
+                      onClick={() => setOngletRapport(o.id)}
+                      style={{
+                        padding: '10px 20px', border: 'none', background: 'none', cursor: 'pointer',
+                        fontSize: 14, fontWeight: 700, color: ongletRapport === o.id ? BLUE : MUTED,
+                        borderBottom: ongletRapport === o.id ? `2px solid ${BLUE}` : '2px solid transparent',
+                        marginBottom: -2, display: 'flex', alignItems: 'center', gap: 6,
+                      }}
+                    >
+                      {o.label}
+                      {o.alerte && <span style={{ background: '#ef4444', color: '#fff', borderRadius: '50%', width: 18, height: 18, fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{alertesJournaux.length}</span>}
+                    </button>
+                  ))}
+                </div>
+
+                {chargementRapports ? (
+                  <div style={{ padding: 48, textAlign: 'center', color: MUTED }}>Chargement…</div>
+                ) : ongletRapport === 'stages' ? (
+                  <>
+                    {/* Filtres stages */}
+                    <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+                      {([
+                        { id: 'TOUS', label: `Tous (${stages.length})` },
+                        { id: 'EN_COURS', label: `En cours (${stages.filter(s => s.statut === 'EN_COURS').length})` },
+                        { id: 'TERMINE', label: `Terminés (${stages.filter(s => s.statut === 'TERMINE').length})` },
+                        { id: 'ABANDONNE', label: `Abandonnés (${stages.filter(s => s.statut === 'ABANDONNE').length})` },
+                      ] as { id: StatutStage | 'TOUS'; label: string }[]).map((f) => (
+                        <button key={f.id} onClick={() => setFiltreStages(f.id)}
+                          style={{ padding: '7px 16px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, background: filtreStages === f.id ? NAVY : '#eef2fa', color: filtreStages === f.id ? '#fff' : MUTED }}>
+                          {f.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <section style={{ ...CARTE, marginTop: 16, overflow: 'hidden' }}>
+                      {stagesFiltres.length === 0 ? (
+                        <div style={{ padding: 48, textAlign: 'center', color: MUTED }}>
+                          <p style={{ margin: 0, fontSize: 36 }}>📊</p>
+                          <p style={{ margin: '8px 0 0', fontWeight: 600, color: NAVY }}>Aucun stage trouvé</p>
+                        </div>
+                      ) : (
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid #eef2fa', background: '#f8faff' }}>
+                              <th style={th}>Étudiant</th>
+                              <th style={th}>Stage / Entreprise</th>
+                              <th style={th}>Période</th>
+                              <th style={th}>Journaux</th>
+                              <th style={th}>Statut</th>
+                              <th style={th}>Note /20</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {stagesFiltres.map((stage, idx) => {
+                              const nomEt = `${stage.etudiant.prenom} ${stage.etudiant.nom}`
+                              const couleurAv = COULEURS_AVATAR[stage.etudiant.id % COULEURS_AVATAR.length]
+                              const s = STATUTS_STAGE[stage.statut] ?? { label: stage.statut, fond: '#eef2fa', texte: MUTED }
+                              const nbJournaux = stage.journaux.length
+                              const nbAlertes = stage.journaux.filter(j => j.alerte).length
+                              const estEdit = noteEdit?.id === stage.id
+                              return (
+                                <tr key={stage.id} style={{ borderBottom: idx < stagesFiltres.length - 1 ? '1px solid #eef2fa' : 'none' }}>
+                                  {/* Étudiant */}
+                                  <td style={{ padding: '14px 16px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                      <div style={{ width: 36, height: 36, borderRadius: '50%', background: couleurAv, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
+                                        {initiales(nomEt)}
+                                      </div>
+                                      <div>
+                                        <div style={{ fontWeight: 600, color: NAVY, fontSize: 13.5 }}>{nomEt}</div>
+                                        <div style={{ fontSize: 12, color: MUTED }}>{stage.etudiant.email}</div>
+                                        {stage.etudiant.classe && <div style={{ fontSize: 11, color: MUTED }}>{stage.etudiant.classe}</div>}
+                                      </div>
+                                    </div>
+                                  </td>
+                                  {/* Stage / Entreprise */}
+                                  <td style={{ padding: '14px 16px' }}>
+                                    <div style={{ fontWeight: 600, color: NAVY, fontSize: 13.5 }}>{stage.candidature.offre.titre}</div>
+                                    <div style={{ fontSize: 12, color: MUTED }}>{stage.candidature.offre.duree} — {stage.candidature.offre.localisation}</div>
+                                    {stage.candidature.offre.entreprise && (
+                                      <div style={{ fontSize: 12, color: MUTED }}>{stage.candidature.offre.entreprise.nom} {stage.candidature.offre.entreprise.prenom}</div>
+                                    )}
+                                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Enc. : {stage.encadreur.prenom} {stage.encadreur.nom}</div>
+                                  </td>
+                                  {/* Période */}
+                                  <td style={{ padding: '14px 16px', fontSize: 13, color: MUTED, whiteSpace: 'nowrap' }}>
+                                    <div>{formatDate(stage.dateDebut)}</div>
+                                    <div style={{ color: '#9ca3af' }}>→ {formatDate(stage.dateFin)}</div>
+                                  </td>
+                                  {/* Journaux */}
+                                  <td style={{ padding: '14px 16px' }}>
+                                    <div style={{ fontSize: 13, color: NAVY, fontWeight: 600 }}>{nbJournaux} entrée{nbJournaux > 1 ? 's' : ''}</div>
+                                    {nbAlertes > 0 && (
+                                      <div style={{ fontSize: 12, color: '#ef4444', fontWeight: 600, marginTop: 2 }}>⚠ {nbAlertes} alerte{nbAlertes > 1 ? 's' : ''}</div>
+                                    )}
+                                  </td>
+                                  {/* Statut */}
+                                  <td style={{ padding: '14px 16px' }}>
+                                    <span style={{ background: s.fond, color: s.texte, borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 600 }}>
+                                      {s.label}
+                                    </span>
+                                  </td>
+                                  {/* Note */}
+                                  <td style={{ padding: '14px 16px' }}>
+                                    {estEdit ? (
+                                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                        <input
+                                          type="text"
+                                          value={noteEdit.valeur}
+                                          onChange={(e) => setNoteEdit({ id: stage.id, valeur: e.target.value })}
+                                          placeholder="0–20"
+                                          style={{ width: 70, padding: '5px 8px', borderRadius: 7, border: '1px solid #1d6fe8', fontSize: 13, outline: 'none' }}
+                                          onKeyDown={(e) => { if (e.key === 'Enter') enregistrerNote() }}
+                                        />
+                                        <button onClick={enregistrerNote} disabled={enregistrementNote}
+                                          style={{ padding: '5px 10px', borderRadius: 7, border: 'none', background: '#16a34a', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                                          ✓
+                                        </button>
+                                        <button onClick={() => setNoteEdit(null)}
+                                          style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid #e2e8f0', background: '#fff', color: MUTED, fontSize: 12, cursor: 'pointer' }}>
+                                          ✕
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <span style={{ fontWeight: 700, color: stage.note !== null ? NAVY : '#c7d0e0', fontSize: 15 }}>
+                                          {stage.note !== null ? `${stage.note}/20` : '—'}
+                                        </span>
+                                        <button
+                                          onClick={() => setNoteEdit({ id: stage.id, valeur: stage.note !== null ? String(stage.note) : '' })}
+                                          style={{ padding: '3px 8px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#f8faff', color: MUTED, fontSize: 11, cursor: 'pointer' }}>
+                                          {stage.note !== null ? 'Modifier' : 'Noter'}
+                                        </button>
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      )}
+                    </section>
+                  </>
+                ) : (
+                  /* Alertes journaux */
+                  <section style={{ ...CARTE, marginTop: 16, overflow: 'hidden' }}>
+                    {alertesJournaux.length === 0 ? (
+                      <div style={{ padding: 48, textAlign: 'center', color: MUTED }}>
+                        <p style={{ margin: 0, fontSize: 36 }}>✅</p>
+                        <p style={{ margin: '8px 0 0', fontWeight: 600, color: NAVY }}>Aucune alerte active</p>
+                      </div>
+                    ) : (
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid #eef2fa', background: '#f8faff' }}>
+                            <th style={th}>Étudiant</th>
+                            <th style={th}>Stage</th>
+                            <th style={th}>Semaine</th>
+                            <th style={th}>Date dépôt</th>
+                            <th style={th}>Commentaire</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {alertesJournaux.map((j, idx) => {
+                            const nomEt = `${j.stage.etudiant.prenom} ${j.stage.etudiant.nom}`
+                            const couleurAv = COULEURS_AVATAR[j.stage.etudiant.id % COULEURS_AVATAR.length]
+                            return (
+                              <tr key={j.id} style={{ borderBottom: idx < alertesJournaux.length - 1 ? '1px solid #eef2fa' : 'none', background: '#fffbf5' }}>
+                                <td style={{ padding: '14px 16px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                    <div style={{ width: 34, height: 34, borderRadius: '50%', background: couleurAv, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
+                                      {initiales(nomEt)}
+                                    </div>
+                                    <div style={{ fontWeight: 600, color: NAVY, fontSize: 13.5 }}>{nomEt}</div>
+                                  </div>
+                                </td>
+                                <td style={{ padding: '14px 16px' }}>
+                                  <div style={{ fontWeight: 600, color: NAVY, fontSize: 13 }}>{j.stage.candidature.offre.titre}</div>
+                                  {j.stage.candidature.offre.entreprise && (
+                                    <div style={{ fontSize: 12, color: MUTED }}>{j.stage.candidature.offre.entreprise.nom}</div>
+                                  )}
+                                </td>
+                                <td style={{ padding: '14px 16px' }}>
+                                  <span style={{ background: '#fde9d0', color: '#c05622', borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 600 }}>
+                                    Semaine {j.semaine}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '14px 16px', fontSize: 13, color: MUTED }}>{formatDate(j.dateDepot)}</td>
+                                <td style={{ padding: '14px 16px', fontSize: 13, color: MUTED, maxWidth: 240 }}>
+                                  {j.commentaire ? j.commentaire : <span style={{ color: '#c7d0e0' }}>Aucun commentaire</span>}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </section>
+                )}
+              </>
+            )
+          })()}
+
+          {/* ─────────── PARAMÈTRES ─────────── */}
+          {vue === 'parametres' && (() => {
+            const ONGLETS_PARAM = [
+              { id: 'profil',   label: 'Informations du profil' },
+              { id: 'securite', label: 'Sécurité' },
+            ] as const
+
+            const champStyle: React.CSSProperties = {
+              width: '100%', padding: '10px 14px', borderRadius: 8,
+              border: '1.5px solid #dce5f3', fontSize: 14, color: NAVY,
+              outline: 'none', boxSizing: 'border-box' as const,
+            }
+            const labelStyle: React.CSSProperties = {
+              display: 'block', fontSize: 12, fontWeight: 600,
+              color: MUTED, marginBottom: 6, textTransform: 'uppercase' as const, letterSpacing: '0.04em',
+            }
+
+            return (
+              <>
+                <h1 style={titrePage}>Paramètres</h1>
+
+                {/* Bannières */}
+                {erreurParametres && (
+                  <div style={{ background: '#fde8e8', border: '1px solid #fca5a5', borderRadius: 10, padding: '12px 18px', marginBottom: 20, color: '#b91c1c', fontSize: 14 }}>
+                    {erreurParametres}
+                  </div>
+                )}
+
+                {chargementParametres && (
+                  <div style={{ textAlign: 'center', padding: 40, color: MUTED }}>Chargement…</div>
+                )}
+
+                {!chargementParametres && (
+                  <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+
+                    {/* Carte profil résumé */}
+                    <div style={{ ...CARTE, padding: 28, minWidth: 220, flex: '0 0 220px', textAlign: 'center' }}>
+                      <div style={{
+                        width: 72, height: 72, borderRadius: '50%',
+                        background: 'linear-gradient(135deg, #1d6fe8, #0b2f7a)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 28, color: '#fff', fontWeight: 700,
+                        margin: '0 auto 14px',
+                      }}>
+                        {(profilAdmin?.prenom?.[0] || '?').toUpperCase()}
+                      </div>
+                      <div style={{ fontWeight: 700, fontSize: 16, color: NAVY }}>
+                        {profilAdmin ? `${profilAdmin.prenom} ${profilAdmin.nom}` : '—'}
+                      </div>
+                      <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>Administrateur</div>
+                      <div style={{ fontSize: 12, color: MUTED, marginTop: 8, wordBreak: 'break-all' as const }}>
+                        {profilAdmin?.email}
+                      </div>
+                      {profilAdmin?.telephone && (
+                        <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>{profilAdmin.telephone}</div>
+                      )}
+                      {profilAdmin?.createdAt && (
+                        <div style={{ fontSize: 11, color: '#b0bcd0', marginTop: 12 }}>
+                          Compte créé le {formatDate(profilAdmin.createdAt)}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Panneau principal */}
+                    <div style={{ flex: 1, minWidth: 320 }}>
+
+                      {/* Onglets */}
+                      <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: '#f1f5fb', borderRadius: 10, padding: 4, width: 'fit-content' }}>
+                        {ONGLETS_PARAM.map((o) => (
+                          <button key={o.id} onClick={() => setOngletParametres(o.id)}
+                            style={{
+                              padding: '8px 22px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                              background: ongletParametres === o.id ? '#fff' : 'transparent',
+                              color: ongletParametres === o.id ? BLUE : MUTED,
+                              boxShadow: ongletParametres === o.id ? '0 1px 4px rgba(30,70,150,0.10)' : 'none',
+                              transition: 'all 0.15s',
+                            }}>
+                            {o.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* ── Onglet PROFIL ── */}
+                      {ongletParametres === 'profil' && (
+                        <div style={{ ...CARTE, padding: 28 }}>
+                          <h2 style={{ margin: '0 0 22px', fontSize: 16, fontWeight: 700, color: NAVY }}>
+                            Informations du profil
+                          </h2>
+
+                          {succesParametres && (
+                            <div style={{ background: '#d9f5e3', border: '1px solid #86efac', borderRadius: 8, padding: '10px 16px', marginBottom: 18, color: '#15803d', fontSize: 13 }}>
+                              {succesParametres}
+                            </div>
+                          )}
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
+                            <div>
+                              <label style={labelStyle}>Prénom</label>
+                              <input style={champStyle} value={formProfil.prenom}
+                                onChange={(e) => setFormProfil((p) => ({ ...p, prenom: e.target.value }))}
+                                placeholder="Votre prénom" />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Nom</label>
+                              <input style={champStyle} value={formProfil.nom}
+                                onChange={(e) => setFormProfil((p) => ({ ...p, nom: e.target.value }))}
+                                placeholder="Votre nom" />
+                            </div>
+                            <div style={{ gridColumn: '1 / -1' }}>
+                              <label style={labelStyle}>Adresse email</label>
+                              <input style={champStyle} type="email" value={formProfil.email}
+                                onChange={(e) => setFormProfil((p) => ({ ...p, email: e.target.value }))}
+                                placeholder="email@exemple.com" />
+                            </div>
+                            <div style={{ gridColumn: '1 / -1' }}>
+                              <label style={labelStyle}>Téléphone (optionnel)</label>
+                              <input style={champStyle} value={formProfil.telephone}
+                                onChange={(e) => setFormProfil((p) => ({ ...p, telephone: e.target.value }))}
+                                placeholder="+221 XX XXX XX XX" />
+                            </div>
+                          </div>
+
+                          <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end' }}>
+                            <button onClick={enregistrerProfil} disabled={enregistrementProfil}
+                              style={{
+                                padding: '10px 28px', borderRadius: 9, border: 'none', cursor: 'pointer',
+                                background: BLUE, color: '#fff', fontWeight: 700, fontSize: 14,
+                                opacity: enregistrementProfil ? 0.6 : 1,
+                              }}>
+                              {enregistrementProfil ? 'Enregistrement…' : 'Enregistrer les modifications'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── Onglet SÉCURITÉ ── */}
+                      {ongletParametres === 'securite' && (
+                        <div style={{ ...CARTE, padding: 28 }}>
+                          <h2 style={{ margin: '0 0 22px', fontSize: 16, fontWeight: 700, color: NAVY }}>
+                            Changer le mot de passe
+                          </h2>
+
+                          {erreurMdp && (
+                            <div style={{ background: '#fde8e8', border: '1px solid #fca5a5', borderRadius: 8, padding: '10px 16px', marginBottom: 18, color: '#b91c1c', fontSize: 13 }}>
+                              {erreurMdp}
+                            </div>
+                          )}
+                          {succesMdp && (
+                            <div style={{ background: '#d9f5e3', border: '1px solid #86efac', borderRadius: 8, padding: '10px 16px', marginBottom: 18, color: '#15803d', fontSize: 13 }}>
+                              {succesMdp}
+                            </div>
+                          )}
+
+                          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 16, maxWidth: 440 }}>
+                            <div>
+                              <label style={labelStyle}>Mot de passe actuel</label>
+                              <input style={champStyle} type="password" value={formMdp.ancien}
+                                onChange={(e) => setFormMdp((p) => ({ ...p, ancien: e.target.value }))}
+                                placeholder="••••••••" />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Nouveau mot de passe</label>
+                              <input style={champStyle} type="password" value={formMdp.nouveau}
+                                onChange={(e) => setFormMdp((p) => ({ ...p, nouveau: e.target.value }))}
+                                placeholder="Minimum 8 caractères" />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Confirmer le nouveau mot de passe</label>
+                              <input style={champStyle} type="password" value={formMdp.confirmation}
+                                onChange={(e) => setFormMdp((p) => ({ ...p, confirmation: e.target.value }))}
+                                placeholder="••••••••" />
+                            </div>
+                          </div>
+
+                          <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end', maxWidth: 440 }}>
+                            <button onClick={changerMotDePasse} disabled={enregistrementMdp}
+                              style={{
+                                padding: '10px 28px', borderRadius: 9, border: 'none', cursor: 'pointer',
+                                background: '#16a34a', color: '#fff', fontWeight: 700, fontSize: 14,
+                                opacity: enregistrementMdp ? 0.6 : 1,
+                              }}>
+                              {enregistrementMdp ? 'Modification…' : 'Changer le mot de passe'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            )
+          })()}
         </main>
       </div>
     </div>
