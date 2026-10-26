@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useSyncExternalStore } from 'react'
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 
@@ -94,7 +94,7 @@ const cardSt: React.CSSProperties = {
 export default function DashboardEtudiant() {
   const router = useRouter()
   const [vue, setVue]     = useState('tableau')
-  const [token, setToken] = useState('')
+  const tokenRef = useRef('')
 
   const [profil,       setProfil]       = useState<ProfilEtudiant | null>(null)
   const [offres,       setOffres]       = useState<OffreMatching[]>([])
@@ -127,12 +127,6 @@ export default function DashboardEtudiant() {
   const echelle = largeur >= 1024 ? Math.min(Math.max(largeur / LARGEUR_MAQUETTE, 0.6), 1.5) : 1
   const hauteurPage = `${100 / echelle}vh`
 
-  useEffect(() => {
-    const t = localStorage.getItem('token') || ''
-    if (!t) { router.push('/login'); return }
-    setToken(t)
-  }, [router])
-
   const loadProfil = useCallback(async (tok: string) => {
     const r = await fetch('/api/etudiant/profil', { headers: { Authorization: `Bearer ${tok}` } })
     const d = await r.json()
@@ -140,7 +134,6 @@ export default function DashboardEtudiant() {
       setProfil(d.profil)
       setFormInfos({ nom: d.profil.nom||'', prenom: d.profil.prenom||'', email: d.profil.email||'', telephone: d.profil.telephone||'', classe: d.profil.classe||'', filiere: d.profil.filiere||'', cvUrl: d.profil.cvUrl||'', dateNaissance: d.profil.dateNaissance||'', disponibilite: d.profil.disponibilite||'', dureeSouhaitee: d.profil.dureeSouhaitee||'', domaineSouhaite: d.profil.domaineSouhaite||'', villeSouhaitee: d.profil.villeSouhaitee||'', niveauEtudes: d.profil.niveauEtudes||'', photoUrl: d.profil.photoUrl||'' })
       setFormComp(d.profil.competences || '')
-      // Si profil incomplet, ouvrir directement en mode édition
       const champs = [d.profil.nom, d.profil.prenom, d.profil.telephone, d.profil.classe, d.profil.filiere, d.profil.competences]
       if (champs.filter(Boolean).length < 3) setEditInfos(true)
     }
@@ -165,9 +158,14 @@ export default function DashboardEtudiant() {
   }, [])
 
   useEffect(() => {
-    if (!token) return
-    loadProfil(token); loadOffres(token); loadCandid(token)
-  }, [token, loadProfil, loadOffres, loadCandid])
+    const t = localStorage.getItem('token') || ''
+    if (!t) { router.push('/login'); return }
+    tokenRef.current = t
+    loadProfil(t)
+    loadOffres(t)
+    loadCandid(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const deco = () => { localStorage.removeItem('token'); router.push('/login') }
   const nav  = (id: string) => { setVue(id); setMsgProfil(''); setErrProfil('') }
@@ -192,13 +190,13 @@ export default function DashboardEtudiant() {
     try {
       const r = await fetch('/api/candidatures', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenRef.current}` },
         body: JSON.stringify({ offreId: offreSelect.id, cvUrl: cvUrl.trim(), lettreUrl: lettreUrl.trim() || null }),
       })
       const d = await r.json()
       if (r.ok) {
         setMsgPost('Candidature envoyée !')
-        loadOffres(token); loadCandid(token)
+        loadOffres(tokenRef.current); loadCandid(tokenRef.current)
         setTimeout(() => { setOffreSelect(null); setCvUrl(''); setLettreUrl(''); setMsgPost('') }, 1500)
       } else setMsgPost(d.message || 'Erreur')
     } finally { setEnvoi(false) }
@@ -207,7 +205,7 @@ export default function DashboardEtudiant() {
   const saveInfos = async () => {
     setSaving(true); setMsgProfil(''); setErrProfil('')
     try {
-      const r = await fetch('/api/etudiant/profil', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(formInfos) })
+      const r = await fetch('/api/etudiant/profil', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenRef.current}` }, body: JSON.stringify(formInfos) })
       const d = await r.json()
       if (r.ok) { setMsgProfil('Profil mis à jour'); setProfil(d.profil); setEditInfos(false) }
       else setErrProfil(d.message || 'Erreur')
@@ -217,9 +215,9 @@ export default function DashboardEtudiant() {
   const saveComp = async () => {
     setSaving(true); setMsgProfil(''); setErrProfil('')
     try {
-      const r = await fetch('/api/etudiant/profil', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ ...formInfos, competences: formComp }) })
+      const r = await fetch('/api/etudiant/profil', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenRef.current}` }, body: JSON.stringify({ ...formInfos, competences: formComp }) })
       const d = await r.json()
-      if (r.ok) { setMsgProfil('Compétences mises à jour'); setProfil(p => p ? { ...p, competences: d.profil.competences } : p); setEditComp(false); loadOffres(token) }
+      if (r.ok) { setMsgProfil('Compétences mises à jour'); setProfil(p => p ? { ...p, competences: d.profil.competences } : p); setEditComp(false); loadOffres(tokenRef.current) }
       else setErrProfil(d.message || 'Erreur')
     } finally { setSaving(false) }
   }
@@ -231,7 +229,7 @@ export default function DashboardEtudiant() {
     if (formMdp.nouveau.length < 8) { setErrProfil('Minimum 8 caractères'); return }
     setSaving(true)
     try {
-      const r = await fetch('/api/etudiant/profil', { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ ancienMotDePasse: formMdp.ancien, nouveauMotDePasse: formMdp.nouveau }) })
+      const r = await fetch('/api/etudiant/profil', { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenRef.current}` }, body: JSON.stringify({ ancienMotDePasse: formMdp.ancien, nouveauMotDePasse: formMdp.nouveau }) })
       const d = await r.json()
       if (r.ok) { setMsgProfil('Mot de passe mis à jour'); setFormMdp({ ancien:'', nouveau:'', confirmation:'' }) }
       else setErrProfil(d.message || 'Erreur')
@@ -901,7 +899,7 @@ export default function DashboardEtudiant() {
 
   // ── RENDU ─────────────────────────────────────────────────
   return (
-    <div style={{ display: 'flex', minHeight: hauteurPage, fontFamily: "'Inter', system-ui, sans-serif", background: BG, zoom: echelle }}>
+    <div style={{ display: 'flex', minHeight: hauteurPage, fontFamily: "'Inter', system-ui, sans-serif", background: BG, zoom: echelle } as React.CSSProperties & { zoom?: number }}>
       {sidebar}
       <main style={{ flex: 1, minHeight: hauteurPage, overflow: 'auto' }}>
         {vue === 'tableau'      && renderTableau()}

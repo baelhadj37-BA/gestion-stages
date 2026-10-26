@@ -47,9 +47,9 @@ export async function GET(request: NextRequest, { params }: Params) {
     const encadreurId = convention.stage.encadreurId
     const autorise =
       utilisateur.role === 'ADMIN' ||
-      (utilisateur.role === 'ETUDIANT' && utilisateur.id === etudiantId) ||
-      (utilisateur.role === 'ENTREPRISE' && utilisateur.id === entrepriseId) ||
-      (utilisateur.role === 'ENCADREUR' && utilisateur.id === encadreurId)
+      (utilisateur.role === 'ETUDIANT' && utilisateur.userId === etudiantId) ||
+      (utilisateur.role === 'ENTREPRISE' && utilisateur.userId === entrepriseId) ||
+      (utilisateur.role === 'ENCADREUR' && utilisateur.userId === encadreurId)
     if (!autorise) {
       return NextResponse.json({ message: 'Accès non autorisé' }, { status: 403 })
     }
@@ -89,7 +89,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (action === 'SIGNER') {
       const etudiantId = convention.stage.candidature.etudiantId
       const entrepriseId = convention.stage.candidature.offre.entrepriseId
-      if (utilisateur.role === 'ETUDIANT' && utilisateur.id === etudiantId) {
+      if (utilisateur.role === 'ETUDIANT' && utilisateur.userId === etudiantId) {
         if (convention.statut !== 'ETAPE_ETUDIANT') {
           return NextResponse.json({ message: 'Ce n\'est pas votre étape' }, { status: 400 })
         }
@@ -99,7 +99,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         })
         return NextResponse.json({ message: 'Convention transmise à l\'entreprise', data: conventionMaj })
       }
-      if (utilisateur.role === 'ENTREPRISE' && utilisateur.id === entrepriseId) {
+      if (utilisateur.role === 'ENTREPRISE' && utilisateur.userId === entrepriseId) {
         if (convention.statut !== 'ETAPE_ENTREPRISE') {
           return NextResponse.json({ message: 'Ce n\'est pas votre étape' }, { status: 400 })
         }

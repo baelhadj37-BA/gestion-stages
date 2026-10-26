@@ -45,23 +45,17 @@ model User {
   matricule   String?
   classe      String?
   secteur     String?
-  filiere     String?
   telephone   String?
+  filiere     String?
   createdAt   DateTime @default(now())
-  cvUrl   String?
-  dateNaissance  String?
-  disponibilite  String?
-  dureeSouhaitee String?
-  domaineSouhaite String?
-  villeSouhaitee String?
-  niveauEtudes   String?
-  photoUrl       String?
 
-  offres          Offre[]        @relation("EntrepriseOffres")
-  candidatures    Candidature[]  @relation("EtudiantCandidatures")
-  stagesEtudiant  Stage[]        @relation("EtudiantStage")
-  stagesEncadreur Stage[]        @relation("EncadreurStage")
-  notifications   Notification[]
+  offres           Offre[]
+  candidatures     Candidature[]
+  stagesEtudiant   Stage[]        @relation("EtudiantStage")
+  stagesEncadreur  Stage[]        @relation("EncadreurStage")
+  notifications    Notification[]
+  messagesEnvoyes  Message[]      @relation("MessageExpediteur")
+  messagesRecus    Message[]      @relation("MessageDestinataire")
 }
 
 model Offre {
@@ -69,13 +63,14 @@ model Offre {
   titre        String
   description  String      @db.Text
   duree        String
-  localisation String
+  localisation String      @default("")
   tags         String?
+  filiere      String?
   statut       StatutOffre @default(EN_ATTENTE)
   createdAt    DateTime    @default(now())
 
+  entreprise   User          @relation(fields: [entrepriseId], references: [id])
   entrepriseId Int
-  entreprise   User          @relation("EntrepriseOffres", fields: [entrepriseId], references: [id])
   candidatures Candidature[]
 }
 
@@ -87,10 +82,10 @@ model Candidature {
   score     Int               @default(0)
   createdAt DateTime          @default(now())
 
+  etudiant   User  @relation(fields: [etudiantId], references: [id])
   etudiantId Int
-  etudiant   User  @relation("EtudiantCandidatures", fields: [etudiantId], references: [id])
-  offreId    Int
   offre      Offre @relation(fields: [offreId], references: [id])
+  offreId    Int
   stage      Stage?
 }
 
@@ -102,42 +97,47 @@ model Stage {
   statut        String   @default("EN_COURS")
   createdAt     DateTime @default(now())
 
-  etudiantId    Int
   etudiant      User        @relation("EtudiantStage", fields: [etudiantId], references: [id])
-  encadreurId   Int
+  etudiantId    Int
   encadreur     User        @relation("EncadreurStage", fields: [encadreurId], references: [id])
-  candidatureId Int         @unique
+  encadreurId   Int
   candidature   Candidature @relation(fields: [candidatureId], references: [id])
+  candidatureId Int         @unique
 
-  journaux   JournalBord[]
-  convention Convention?
-  documents  Document[]
+  journaux    JournalBord[]
+  convention  Convention?
+  documents   Document[]
+  evaluation  Evaluation?
 }
 
 model JournalBord {
   id             Int       @id @default(autoincrement())
-  semaine        Int
+  semaine        Int       @default(1)
   contenu        String    @db.Text
   statut         String    @default("EN_ATTENTE")
   dateDepot      DateTime  @default(now())
+  dateDebut      DateTime  @default(now())
+  dateFin        DateTime  @default(now())
   alerte         Boolean   @default(false)
   commentaire    String?   @db.Text
   dateValidation DateTime?
 
-  stageId Int
   stage   Stage @relation(fields: [stageId], references: [id])
+  stageId Int
 }
 
 model Convention {
   id             Int              @id @default(autoincrement())
   statut         StatutConvention @default(ETAPE_ETUDIANT)
   pdfUrl         String?
+  uuid           String           @unique @default(uuid())
+  qrCodeUrl      String?
   motifRejet     String?
   dateValidation DateTime?
   createdAt      DateTime         @default(now())
 
-  stageId Int   @unique
   stage   Stage @relation(fields: [stageId], references: [id])
+  stageId Int   @unique
 }
 
 model Document {
@@ -148,8 +148,8 @@ model Document {
   qrCodeUrl      String?
   dateGeneration DateTime @default(now())
 
-  stageId Int
   stage   Stage @relation(fields: [stageId], references: [id])
+  stageId Int
 }
 
 model Notification {
@@ -159,6 +159,29 @@ model Notification {
   type      String
   createdAt DateTime @default(now())
 
-  userId Int
   user   User @relation(fields: [userId], references: [id])
+  userId Int
+}
+
+model Evaluation {
+  id          Int      @id @default(autoincrement())
+  note        Int      // 1 à 5
+  commentaire String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stage   Stage @relation(fields: [stageId], references: [id])
+  stageId Int   @unique
+}
+
+model Message {
+  id             Int      @id @default(autoincrement())
+  contenu        String   @db.Text
+  lu             Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  expediteur      User @relation("MessageExpediteur",   fields: [expediteurId],   references: [id])
+  expediteurId    Int
+  destinataire    User @relation("MessageDestinataire",  fields: [destinataireId], references: [id])
+  destinataireId  Int
 }

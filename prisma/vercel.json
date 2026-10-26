@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/alertes?key=cron-secret-ipd-2024",
+      "schedule": "0 8 * * 1"
+    }
+  ]
+}
