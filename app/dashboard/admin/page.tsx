@@ -458,6 +458,13 @@ export default function AdminDashboard() {
   const [erreur, setErreur] = useState('')
   const [recharge, setRecharge] = useState(0)
 
+  // ── Créer encadreur ──
+  const [modalEncadreur, setModalEncadreur] = useState(false)
+  const [formEncadreur, setFormEncadreur] = useState({ nom: '', prenom: '', email: '', motDePasse: '', telephone: '', specialite: '' })
+  const [creationEncadreur, setCreationEncadreur] = useState(false)
+  const [erreurEncadreur, setErreurEncadreur] = useState('')
+  const [succesEncadreur, setSuccesEncadreur] = useState('')
+
   // ── Candidatures ──
   const [candidatures, setCandidatures] = useState<Candidature[]>([])
   // ── Rapports ──
@@ -601,6 +608,39 @@ export default function AdminDashboard() {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
     router.push('/login')
+  }
+
+  const creerEncadreur = async () => {
+    setErreurEncadreur('')
+    setSuccesEncadreur('')
+    const { nom, prenom, email, motDePasse } = formEncadreur
+    if (!nom.trim() || !prenom.trim() || !email.trim() || !motDePasse.trim()) {
+      setErreurEncadreur('Nom, prénom, email et mot de passe sont obligatoires.')
+      return
+    }
+    if (motDePasse.length < 6) {
+      setErreurEncadreur('Le mot de passe doit contenir au moins 6 caractères.')
+      return
+    }
+    const token = localStorage.getItem('token')
+    setCreationEncadreur(true)
+    try {
+      const res = await fetch('/api/admin/encadreurs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(formEncadreur),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) { setErreurEncadreur(data?.message || 'Erreur lors de la création.'); return }
+      if (data?.encadreur) { setUsers((prev) => [...prev, data.encadreur]) }
+      setSuccesEncadreur(`Encadreur ${prenom} ${nom} créé avec succès !`)
+      setFormEncadreur({ nom: '', prenom: '', email: '', motDePasse: '', telephone: '', specialite: '' })
+      setTimeout(() => { setModalEncadreur(false); setSuccesEncadreur('') }, 1800)
+    } catch {
+      setErreurEncadreur('Impossible de contacter le serveur.')
+    } finally {
+      setCreationEncadreur(false)
+    }
   }
 
   const traiterOffre = async (offreId: number, action: 'VALIDER' | 'REJETER') => {
@@ -1535,10 +1575,67 @@ export default function AdminDashboard() {
           {/* ─────────── UTILISATEURS ─────────── */}
           {vue === 'utilisateurs' && (
             <>
-              <h1 style={titrePage}>Gestion des utilisateurs</h1>
-              <p style={{ margin: '4px 0 24px', fontSize: 16, color: '#2f55b0' }}>
-                {usersFiltres.length} utilisateur(s)
-              </p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
+                <div>
+                  <h1 style={titrePage}>Gestion des utilisateurs</h1>
+                  <p style={{ margin: '4px 0 0', fontSize: 16, color: '#2f55b0' }}>
+                    {usersFiltres.length} utilisateur(s)
+                  </p>
+                </div>
+                <button
+                  onClick={() => { setModalEncadreur(true); setErreurEncadreur(''); setSuccesEncadreur('') }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '11px 22px', borderRadius: 10, border: 'none',
+                    background: BLUE, color: '#fff', fontSize: 14.5, fontWeight: 700, cursor: 'pointer',
+                    boxShadow: '0 4px 14px rgba(29,111,232,0.35)',
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  Créer un encadreur
+                </button>
+              </div>
+
+              {/* Modal Créer encadreur */}
+              {modalEncadreur && (
+                <div
+                  style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(11,47,122,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+                  onClick={(e) => { if (e.target === e.currentTarget) setModalEncadreur(false) }}
+                >
+                  <div style={{ ...CARTE, width: '100%', maxWidth: 500, padding: '32px 36px', position: 'relative' }}>
+                    <button onClick={() => setModalEncadreur(false)} style={{ position: 'absolute', top: 16, right: 16, background: 'transparent', border: 'none', cursor: 'pointer', color: MUTED, display: 'flex' }}>
+                      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                    </button>
+                    <h2 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 800, color: NAVY }}>Créer un encadreur</h2>
+                    <p style={{ margin: '0 0 24px', fontSize: 14, color: MUTED }}>L&apos;encadreur pourra se connecter avec ces identifiants.</p>
+                    {erreurEncadreur && <div style={{ marginBottom: 16, padding: '10px 16px', borderRadius: 8, background: '#fde2e2', color: '#b91c1c', fontSize: 13.5 }}>{erreurEncadreur}</div>}
+                    {succesEncadreur && <div style={{ marginBottom: 16, padding: '10px 16px', borderRadius: 8, background: '#d9f5e3', color: '#15803d', fontSize: 13.5, fontWeight: 600 }}>{succesEncadreur}</div>}
+                    {(['nom', 'prenom', 'email', 'motDePasse', 'telephone', 'specialite'] as const).map((champ) => (
+                      <div key={champ} style={{ marginBottom: 16 }}>
+                        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#3b4a6b', marginBottom: 6 }}>
+                          {champ === 'nom' ? 'Nom *' : champ === 'prenom' ? 'Prénom *' : champ === 'email' ? 'Email *' : champ === 'motDePasse' ? 'Mot de passe *' : champ === 'telephone' ? 'Téléphone' : 'Spécialité'}
+                        </label>
+                        <input
+                          type={champ === 'motDePasse' ? 'password' : champ === 'email' ? 'email' : 'text'}
+                          value={formEncadreur[champ]}
+                          onChange={(e) => setFormEncadreur((f) => ({ ...f, [champ]: e.target.value }))}
+                          placeholder={champ === 'motDePasse' ? 'Min. 6 caractères' : champ === 'specialite' ? 'ex: Informatique, Réseaux…' : ''}
+                          style={{ width: '100%', height: 42, padding: '0 14px', borderRadius: 8, border: '1.5px solid #dfe6f3', fontSize: 14, color: '#2d3b5a', outline: 'none', background: '#f8faff', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+                      <button onClick={() => setModalEncadreur(false)} style={{ flex: 1, height: 44, borderRadius: 9, border: '1.5px solid #dfe6f3', background: '#fff', color: MUTED, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Annuler</button>
+                      <button onClick={creerEncadreur} disabled={creationEncadreur} style={{ flex: 2, height: 44, borderRadius: 9, border: 'none', background: creationEncadreur ? '#93b4f0' : BLUE, color: '#fff', fontSize: 14.5, fontWeight: 700, cursor: creationEncadreur ? 'not-allowed' : 'pointer' }}>
+                        {creationEncadreur ? 'Création…' : 'Créer l\'encadreur'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <section style={{ ...CARTE, overflow: 'hidden' }}>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', minWidth: 600, borderCollapse: 'collapse', textAlign: 'left', fontSize: 13.5 }}>
@@ -2173,7 +2270,7 @@ export default function AdminDashboard() {
                     ].map((c) => (
                       <div key={c.label} style={{ ...CARTE, padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 6 }}>
                         <div style={{ width: 38, height: 38, borderRadius: 10, background: c.fond, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Icon name="chart" size={18} sw={1.8} style={{ color: c.couleur } as CSSProperties} />
+                          <span style={{ color: c.couleur, display: 'flex' }}><Icon name="chart" size={18} sw={1.8} /></span>
                         </div>
                         <div style={{ fontSize: 26, fontWeight: 800, color: NAVY, marginTop: 4 }}>{c.valeur}</div>
                         <div style={{ fontSize: 12.5, color: MUTED, fontWeight: 500 }}>{c.label}</div>
@@ -2185,9 +2282,9 @@ export default function AdminDashboard() {
                 {/* Onglets */}
                 <div style={{ display: 'flex', gap: 4, marginTop: 28, borderBottom: '2px solid #eef2fa' }}>
                   {([
-                    { id: 'stages', label: `Stages (${stages.length})` },
-                    { id: 'alertes', label: `Alertes journaux (${alertesJournaux.length})`, alerte: alertesJournaux.length > 0 },
-                  ] as const).map((o) => (
+                    { id: 'stages' as const, label: `Stages (${stages.length})`, alerte: false as boolean },
+                    { id: 'alertes' as const, label: `Alertes journaux (${alertesJournaux.length})`, alerte: alertesJournaux.length > 0 },
+                  ]).map((o) => (
                     <button
                       key={o.id}
                       onClick={() => setOngletRapport(o.id)}
