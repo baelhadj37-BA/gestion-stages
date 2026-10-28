@@ -1,4 +1,3 @@
-// app/api/conventions/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { verifierToken } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -53,7 +52,7 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    return NextResponse.json({ conventions })
+    return NextResponse.json({ data: conventions })
   } catch (error) {
     console.error('[GET /api/conventions]', error)
     return NextResponse.json({ message: 'Erreur serveur' }, { status: 500 })
