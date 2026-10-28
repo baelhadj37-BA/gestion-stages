@@ -1811,7 +1811,7 @@ export default function AdminDashboard() {
                     <table style={{ width: '100%', minWidth: 750, borderCollapse: 'collapse', textAlign: 'left', fontSize: 13 }}>
                       <thead style={{ background: '#f4f7fc' }}>
                         <tr>
-                          {['Étudiant', 'Offre de stage', 'Entreprise', 'Date', 'Statut', 'Documents'].map((h) => (
+                          {['Étudiant', 'Offre de stage', 'Entreprise', 'Date', 'Statut'].map((h) => (
                             <th key={h} style={th}>{h}</th>
                           ))}
                         </tr>
@@ -1898,53 +1898,7 @@ export default function AdminDashboard() {
                                 </span>
                               </td>
 
-                              {/* Documents */}
-                              <td style={{ padding: '14px 16px' }}>
-                                <div style={{ display: 'flex', gap: 8 }}>
-                                  <a
-                                    href={c.cvUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: 5,
-                                      padding: '4px 10px',
-                                      borderRadius: 6,
-                                      background: '#eef4ff',
-                                      color: BLUE,
-                                      fontSize: 12,
-                                      fontWeight: 600,
-                                      textDecoration: 'none',
-                                    }}
-                                  >
-                                    <Icon name="doc" size={14} />
-                                    CV
-                                  </a>
-                                  {c.lettreUrl && (
-                                    <a
-                                      href={c.lettreUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: 5,
-                                        padding: '4px 10px',
-                                        borderRadius: 6,
-                                        background: '#eadffc',
-                                        color: '#7c3aed',
-                                        fontSize: 12,
-                                        fontWeight: 600,
-                                        textDecoration: 'none',
-                                      }}
-                                    >
-                                      <Icon name="doc" size={14} />
-                                      LM
-                                    </a>
-                                  )}
-                                </div>
-                              </td>
+     
                             </tr>
                           )
                         })}
