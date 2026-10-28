@@ -38,6 +38,18 @@ interface Candidature {
 interface Notification {
   id: number; message: string; type: string; lu: boolean; createdAt: string
 }
+interface Convention {
+  id: number
+  statut: string
+  stage?: {
+    candidature?: {
+      offre?: {
+        titre?: string
+        entreprise?: { nom?: string }
+      }
+    }
+  }
+}
 
 function scoreCouleur(s: number) {
   if (s >= 70) return { color: '#15803d', bg: '#dcfce7', label: 'Excellent matching' }
@@ -102,8 +114,10 @@ export default function DashboardEtudiant() {
   const [offres,         setOffres]         = useState<OffreMatching[]>([])
   const [candidatures,   setCandidatures]   = useState<Candidature[]>([])
   const [notifications,  setNotifications]  = useState<Notification[]>([])
+  const [conventions,    setConventions]    = useState<Convention[]>([])
   const [chgtOffres,     setChgtOffres]     = useState(false)
   const [chgtCandid,     setChgtCandid]     = useState(false)
+  const [chgtConvention, setChgtConvention] = useState(false)
 
   const [filtreOffre,       setFiltreOffre]       = useState('')
   const [filtreScore,       setFiltreScore]       = useState<'tous'|'excellent'|'moyen'|'faible'>('tous')
@@ -168,6 +182,15 @@ export default function DashboardEtudiant() {
     } catch { /* silencieux */ }
   }, [])
 
+  const loadConventions = useCallback(async (tok: string) => {
+    setChgtConvention(true)
+    try {
+      const r = await fetch('/api/conventions', { headers: { Authorization: `Bearer ${tok}` } })
+      const d = await r.json()
+      if (r.ok) setConventions(d.data || [])
+    } finally { setChgtConvention(false) }
+  }, [])
+
   const marquerLu = useCallback(async (id: number) => {
     const tok = tokenRef.current
     await fetch('/api/etudiant/notifications', {
@@ -193,7 +216,7 @@ export default function DashboardEtudiant() {
       const t = localStorage.getItem('token') || ''
       if (!t) { router.push('/login'); return }
       tokenRef.current = t
-      await Promise.all([loadProfil(t), loadOffres(t), loadCandid(t), loadNotifs(t)])
+      await Promise.all([loadProfil(t), loadOffres(t), loadCandid(t), loadNotifs(t), loadConventions(t)])
     }
     init().catch(() => {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -806,6 +829,64 @@ export default function DashboardEtudiant() {
     </>
   )
 
+  // ── CONVENTION DE STAGE ───────────────────────────────────
+  const renderConvention = () => {
+    const statutColors: Record<string, { color: string; bg: string; label: string }> = {
+      ETAPE_ETUDIANT:   { color: '#d97706', bg: '#fef3c7', label: '✍️ À signer par vous' },
+      ETAPE_ENTREPRISE: { color: '#7c3aed', bg: '#f3e8ff', label: '⏳ En attente entreprise' },
+      ETAPE_ADMIN:      { color: '#1d6fe8', bg: '#e8f0fe', label: '🔍 En attente admin' },
+      VALIDEE:          { color: '#15803d', bg: '#dcfce7', label: '✅ Validée' },
+      REJETEE:          { color: '#dc2626', bg: '#fee2e2', label: '❌ Rejetée' },
+    }
+    return (
+      <>
+        {topbar}
+        <div style={{ padding: '24px 24px 40px' }}>
+          <h2 style={{ margin: '0 0 20px', fontSize: 22, fontWeight: 800, color: NAVY }}>Convention de stage</h2>
+          {chgtConvention
+            ? <div style={{ ...cardSt, textAlign: 'center', padding: 60, color: MUTED }}>Chargement...</div>
+            : conventions.length === 0
+              ? <div style={{ ...cardSt, textAlign: 'center', padding: 60, color: MUTED }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>📄</div>
+                  <div style={{ fontWeight: 700, color: NAVY, marginBottom: 6 }}>Aucune convention disponible</div>
+                  <div style={{ fontSize: 13 }}>Votre convention apparaîtra ici une fois votre candidature acceptée par l&apos;entreprise.</div>
+                </div>
+              : <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  {conventions.map((conv: Convention) => {
+                    const st = statutColors[conv.statut] ?? { color: MUTED, bg: '#f4f7fc', label: conv.statut }
+                    return (
+                      <div key={conv.id} style={{ ...cardSt, display: 'flex', alignItems: 'center', gap: 18 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 700, fontSize: 15, color: NAVY, marginBottom: 4 }}>
+                            {conv.stage?.candidature?.offre?.titre ?? 'Convention de stage'}
+                          </div>
+                          <div style={{ fontSize: 12, color: MUTED }}>
+                            {conv.stage?.candidature?.offre?.entreprise?.nom ?? ''}
+                          </div>
+                        </div>
+                        <span style={{ background: st.bg, color: st.color, padding: '5px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                          {st.label}
+                        </span>
+                        {conv.statut === 'ETAPE_ETUDIANT' ? (
+                          <a href={`/dashboard/etudiant/conventions/${conv.id}`}
+                            style={{ background: NAVY, color: WHITE, borderRadius: 9, padding: '8px 18px', fontSize: 13, fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}>
+                            Signer
+                          </a>
+                        ) : (
+                          <a href={`/dashboard/etudiant/conventions/${conv.id}`}
+                            style={{ background: 'none', border: '1px solid #eef2fa', color: NAVY, borderRadius: 9, padding: '8px 18px', fontSize: 13, fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}>
+                            Voir
+                          </a>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>}
+        </div>
+      </>
+    )
+  }
+
   // ── PROFIL ────────────────────────────────────────────────
   const compListe = profil?.competences ? profil.competences.split(',').map(c => c.trim()).filter(Boolean) : []
   const renderProfil = () => (
@@ -1005,7 +1086,7 @@ export default function DashboardEtudiant() {
         {vue === 'candidatures'    && renderCandidatures()}
         {vue === 'notifications'   && renderNotifications()}
         {vue === 'journal'         && <>{topbar}<div style={{ padding: '24px' }}><h2 style={{ color: NAVY }}>Journal de bord</h2><div style={{ ...cardSt, textAlign: 'center', padding: 60, color: MUTED }}>📓 Ce module s&apos;active une fois votre stage démarré.</div></div></>}
-        {vue === 'convention'      && <>{topbar}<div style={{ padding: '24px' }}><h2 style={{ color: NAVY }}>Convention de stage</h2><div style={{ ...cardSt, textAlign: 'center', padding: 60, color: MUTED }}>📄 Ce module s&apos;active une fois votre candidature acceptée.</div></div></>}
+        {vue === 'convention'      && renderConvention()}
         {vue === 'profil'          && renderProfil()}
       </main>
       {modal}
