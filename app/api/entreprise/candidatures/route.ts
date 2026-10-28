@@ -70,7 +70,10 @@ export async function PATCH(request: NextRequest) {
 
     const candidature = await prisma.candidature.findUnique({
       where: { id: candidatureId },
-      include: { offre: { select: { entrepriseId: true, duree: true } } },
+      include: {
+        offre: { select: { entrepriseId: true, duree: true, titre: true } },
+        etudiant: { select: { id: true, nom: true, prenom: true } },
+      },
     })
 
     if (!candidature) {
@@ -115,6 +118,26 @@ export async function PATCH(request: NextRequest) {
           },
         })
       }
+
+      // Notifier l'étudiant que sa candidature est acceptée
+      await prisma.notification.create({
+        data: {
+          userId: candidature.etudiantId,
+          message: `Votre candidature pour le stage "${candidature.offre.titre}" a été acceptée. Veuillez signer votre convention de stage.`,
+          type: 'CANDIDATURE_ACCEPTEE',
+        },
+      })
+    }
+
+    if (statut === 'REFUSEE') {
+      // Notifier l'étudiant que sa candidature est refusée
+      await prisma.notification.create({
+        data: {
+          userId: candidature.etudiantId,
+          message: `Votre candidature pour le stage "${candidature.offre.titre}" n'a pas été retenue.`,
+          type: 'CANDIDATURE_REFUSEE',
+        },
+      })
     }
 
     return NextResponse.json({

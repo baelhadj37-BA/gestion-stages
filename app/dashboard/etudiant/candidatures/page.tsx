@@ -213,7 +213,7 @@ export default function PageCandidaturesEtudiant() {
     })
       .then(r => r.json())
       .then(json => {
-        if (json.data) setCandidatures(json.data)
+        if (json.candidatures) setCandidatures(json.candidatures)
         else setErreur(json.message ?? 'Erreur de chargement')
       })
       .catch(() => setErreur('Impossible de charger les candidatures'))
@@ -539,3 +539,4 @@ export default function PageCandidaturesEtudiant() {
     </div>
   )
 }
+

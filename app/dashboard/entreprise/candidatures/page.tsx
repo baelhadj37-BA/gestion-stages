@@ -1,174 +1,377 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
+/* ─── Types ─── */
+interface Candidature {
+  id: number
+  statut: 'EN_ATTENTE' | 'ACCEPTEE' | 'REFUSEE'
+  createdAt: string
+  cvUrl: string
+  lettreUrl: string | null
+  etudiant: { id: number; nom: string; prenom: string; email: string }
+  offre: { id: number; titre: string; domaine: string; duree: string }
+}
+
+interface Encadreur {
+  id: number
+  nom: string
+  prenom: string
+  email: string
+}
+
 const NAV = [
-  { label: 'Tableau de bord', href: '/dashboard/entreprise', actif: false, icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke="currentColor" strokeWidth="1.8"/><polyline points="9,22 9,12 15,12 15,22" stroke="currentColor" strokeWidth="1.8"/></svg> },
-  { label: 'Offres de stage', href: '/dashboard/entreprise/offres', actif: false, icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="2" y="7" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" stroke="currentColor" strokeWidth="1.8"/></svg> },
-  { label: 'Candidatures', href: '/dashboard/entreprise/candidatures', actif: true, icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" strokeWidth="1.8"/><polyline points="14,2 14,8 20,8" stroke="currentColor" strokeWidth="1.8"/></svg> },
-  { label: 'Conventions', href: '/dashboard/entreprise/conventions', actif: false, icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M9 11l3 3L22 4" stroke="currentColor" strokeWidth="1.8"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" stroke="currentColor" strokeWidth="1.8"/></svg> },
-  { label: 'Messages', href: '/dashboard/entreprise/messages', actif: false, badge: 1, icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.8"/></svg> },
-  { label: 'Paramètres', href: '/dashboard/entreprise/parametres', actif: false, icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="currentColor" strokeWidth="1.8"/></svg> },
+  { label: 'Tableau de bord', href: '/dashboard/entreprise' },
+  { label: 'Mes offres de stage', href: '/dashboard/entreprise/offres' },
+  { label: 'Mes candidatures', href: '/dashboard/entreprise/candidatures', actif: true },
+  { label: 'Conventions', href: '/dashboard/entreprise/conventions' },
+  { label: 'Messages', href: '/dashboard/entreprise/messages' },
+  { label: 'Paramètres', href: '/dashboard/entreprise/parametres' },
 ]
 
-const CANDIDATURES_DEMO = [
-  { id: 1, nom: 'Fatou Diallo',    filiere: 'Génie Logiciel L3',    offre: 'Développeur Web Full Stack',  score: 92, statut: 'En attente', date: '12 oct. 2025', avatar: 'FD' },
-  { id: 2, nom: 'Ibrahima Sow',    filiere: 'Développement Web L2', offre: 'Développeur Web Full Stack',  score: 78, statut: 'En attente', date: '11 oct. 2025', avatar: 'IS' },
-  { id: 3, nom: 'Mariama Balde',   filiere: 'Génie Logiciel L3',    offre: 'Développeur Web Full Stack',  score: 65, statut: 'Acceptée',   date: '10 oct. 2025', avatar: 'MB' },
-  { id: 4, nom: 'Oumar Camara',    filiere: 'Informatique L2',      offre: 'Développeur Web Full Stack',  score: 45, statut: 'Refusée',    date: '09 oct. 2025', avatar: 'OC' },
-  { id: 5, nom: 'Aissatou Ndiaye', filiere: 'Marketing Digital L3', offre: 'Assistant Marketing Digital', score: 88, statut: 'En attente', date: '11 oct. 2025', avatar: 'AN' },
-  { id: 6, nom: 'Mamadou Diop',    filiere: 'Marketing Digital L2', offre: 'Assistant Marketing Digital', score: 72, statut: 'Acceptée',   date: '10 oct. 2025', avatar: 'MD' },
-  { id: 7, nom: 'Rokhaya Fall',    filiere: 'Data Science L3',      offre: 'Stagiaire Data Analyst',      score: 81, statut: 'En attente', date: '08 oct. 2025', avatar: 'RF' },
-]
+const STATUT_STYLE: Record<string, { label: string; color: string; bg: string }> = {
+  EN_ATTENTE: { label: 'En attente', color: '#d97706', bg: '#fef3c7' },
+  ACCEPTEE:   { label: 'Acceptée',   color: '#15803d', bg: '#dcfce7' },
+  REFUSEE:    { label: 'Refusée',    color: '#dc2626', bg: '#fee2e2' },
+}
 
-export default function EntrepriseCandidatures() {
-  const router = useRouter()
-  const [filtre, setFiltre] = useState('Toutes')
-  const [offreFiltree, setOffreFiltree] = useState('Toutes')
+function initiales(prenom: string, nom: string) {
+  return `${(prenom[0] ?? '').toUpperCase()}${(nom[0] ?? '').toUpperCase()}`
+}
 
-  const offres = ['Toutes', ...Array.from(new Set(CANDIDATURES_DEMO.map(c => c.offre)))]
-  const filtres = ['Toutes', 'En attente', 'Acceptée', 'Refusée']
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+}
 
-  const candidaturesFiltrees = CANDIDATURES_DEMO.filter(c => {
-    const matchStatut = filtre === 'Toutes' || c.statut === filtre
-    const matchOffre  = offreFiltree === 'Toutes' || c.offre === offreFiltree
-    return matchStatut && matchOffre
-  })
+/* ─── Modal Accepter ─── */
+function ModalAccepter({
+  candidature,
+  encadreurs,
+  onClose,
+  onConfirm,
+  loading,
+}: {
+  candidature: Candidature
+  encadreurs: Encadreur[]
+  onClose: () => void
+  onConfirm: (data: { dateDebut: string; dateFin: string; encadreurId: number }) => void
+  loading: boolean
+}) {
+  const [dateDebut, setDateDebut] = useState('')
+  const [dateFin, setDateFin] = useState('')
+  const [encadreurId, setEncadreurId] = useState<number | ''>('')
+  const [erreur, setErreur] = useState('')
 
-  const statutStyle = (s: string) => {
-    if (s === 'Acceptée') return { color: '#15803d', bg: '#dcfce7' }
-    if (s === 'Refusée')  return { color: '#dc2626', bg: '#fee2e2' }
-    return { color: '#d97706', bg: '#fef3c7' }
+  const soumettre = () => {
+    if (!dateDebut || !dateFin) { setErreur('Les dates sont obligatoires'); return }
+    if (!encadreurId) { setErreur('Choisissez un encadreur'); return }
+    if (new Date(dateFin) <= new Date(dateDebut)) { setErreur('La date de fin doit être après la date de début'); return }
+    onConfirm({ dateDebut, dateFin, encadreurId: Number(encadreurId) })
   }
 
-  const scoreColor = (n: number) => n >= 70 ? '#15803d' : n >= 50 ? '#d97706' : '#dc2626'
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
+      <div style={{ background: 'white', borderRadius: 16, padding: 32, width: 480, maxWidth: '90vw' }}>
+        <h2 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 700, color: '#0f172a' }}>
+          Accepter la candidature
+        </h2>
+        <p style={{ margin: '0 0 24px', fontSize: 14, color: '#64748b' }}>
+          {candidature.etudiant.prenom} {candidature.etudiant.nom} — {candidature.offre.titre}
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+              Date de début *
+            </label>
+            <input
+              type="date"
+              value={dateDebut}
+              onChange={e => setDateDebut(e.target.value)}
+              style={{ width: '100%', padding: '9px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+              Date de fin *
+            </label>
+            <input
+              type="date"
+              value={dateFin}
+              onChange={e => setDateFin(e.target.value)}
+              style={{ width: '100%', padding: '9px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+              Encadreur *
+            </label>
+            <select
+              value={encadreurId}
+              onChange={e => setEncadreurId(Number(e.target.value))}
+              style={{ width: '100%', padding: '9px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, boxSizing: 'border-box', background: 'white' }}
+            >
+              <option value="">— Choisir un encadreur —</option>
+              {encadreurs.map(enc => (
+                <option key={enc.id} value={enc.id}>
+                  {enc.prenom} {enc.nom} ({enc.email})
+                </option>
+              ))}
+            </select>
+            {encadreurs.length === 0 && (
+              <p style={{ fontSize: 12, color: '#ef4444', marginTop: 4 }}>
+                Aucun encadreur disponible. Créez d&apos;abord un compte ENCADREUR.
+              </p>
+            )}
+          </div>
+
+          {erreur && (
+            <div style={{ padding: '10px 14px', background: '#fee2e2', borderRadius: 8, fontSize: 13, color: '#dc2626' }}>
+              {erreur}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: 12, marginTop: 24, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onClose}
+            disabled={loading}
+            style={{ padding: '9px 20px', borderRadius: 8, border: '1px solid #d1d5db', background: 'white', fontSize: 14, cursor: 'pointer', color: '#374151' }}
+          >
+            Annuler
+          </button>
+          <button
+            onClick={soumettre}
+            disabled={loading}
+            style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: '#16a34a', color: 'white', fontSize: 14, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}
+          >
+            {loading ? 'Traitement…' : "Confirmer l'acceptation"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ─── Page principale ─── */
+export default function EntrepriseCandidatures() {
+  const router = useRouter()
+  const [candidatures, setCandidatures] = useState<Candidature[]>([])
+  const [encadreurs, setEncadreurs] = useState<Encadreur[]>([])
+  const [filtre, setFiltre] = useState<'TOUS' | 'EN_ATTENTE' | 'ACCEPTEE' | 'REFUSEE'>('TOUS')
+  const [chargement, setChargement] = useState(true)
+  const [erreur, setErreur] = useState('')
+  const [modalCandidature, setModalCandidature] = useState<Candidature | null>(null)
+  const [actionLoading, setActionLoading] = useState(false)
+
+  /* Chargement des données */
+  useEffect(() => {
+    const token = localStorage.getItem('token')
+    const role = localStorage.getItem('role')
+    if (!token || role !== 'ENTREPRISE') { router.push('/login'); return }
+
+    const headers = { authorization: `Bearer ${token}` }
+
+    // Charger candidatures + encadreurs en parallèle
+    Promise.all([
+      fetch('/api/candidatures', { headers }).then(r => r.json()),
+      fetch('/api/admin/users?role=ENCADREUR', { headers }).then(r => r.json()).catch(() => ({ users: [] })),
+    ]).then(([candJson, encJson]) => {
+      if (candJson.candidatures) setCandidatures(candJson.candidatures)
+      else setErreur(candJson.message ?? 'Erreur chargement candidatures')
+
+      if (encJson.users) setEncadreurs(encJson.users)
+    }).catch(() => setErreur('Erreur réseau'))
+    .finally(() => setChargement(false))
+  }, [router])
+
+  /* Accepter une candidature */
+  const accepter = async (data: { dateDebut: string; dateFin: string; encadreurId: number }) => {
+    if (!modalCandidature) return
+    const token = localStorage.getItem('token') ?? ''
+    setActionLoading(true)
+    try {
+      const res = await fetch(`/api/candidatures/${modalCandidature.id}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'ACCEPTER', ...data }),
+      })
+      const json = await res.json()
+      if (!res.ok) { alert(json.message ?? 'Erreur'); return }
+
+      setCandidatures(prev => prev.map(c =>
+        c.id === modalCandidature.id ? { ...c, statut: 'ACCEPTEE' } : c
+      ))
+      setModalCandidature(null)
+    } catch { alert('Erreur réseau') }
+    finally { setActionLoading(false) }
+  }
+
+  /* Refuser une candidature */
+  const refuser = async (candidature: Candidature) => {
+    if (!confirm(`Refuser la candidature de ${candidature.etudiant.prenom} ${candidature.etudiant.nom} ?`)) return
+    const token = localStorage.getItem('token') ?? ''
+    try {
+      const res = await fetch(`/api/candidatures/${candidature.id}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'REFUSER' }),
+      })
+      if (!res.ok) { const j = await res.json(); alert(j.message ?? 'Erreur'); return }
+      setCandidatures(prev => prev.map(c => c.id === candidature.id ? { ...c, statut: 'REFUSEE' } : c))
+    } catch { alert('Erreur réseau') }
+  }
+
+  const filtrees = candidatures.filter(c => filtre === 'TOUS' || c.statut === filtre)
+
+  if (chargement) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#f0f4f8' }}>
+      <div style={{ fontSize: 16, color: '#0d1b3e', fontWeight: 600 }}>Chargement…</div>
+    </div>
+  )
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', fontFamily: "'Inter', system-ui, sans-serif", background: '#f0f4f8' }}>
 
+      {/* Sidebar */}
       <aside style={{ width: 235, minWidth: 235, background: '#0d1b3e', display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 100 }}>
-        <div style={{ padding: '18px 16px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 46, height: 46, borderRadius: '50%', background: 'white', flexShrink: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <img src="/logo-ipd.jpg" alt="IPD" style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-              onError={(e) => { const p = (e.target as HTMLImageElement).parentElement; if (p) p.innerHTML = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M2 10l10-6 10 6-10 6z" fill="#1d4ed8"/><path d="M6 12v5c0 0 2 3 6 3s6-3 6-3v-5" stroke="#1d4ed8" stroke-width="1.5" fill="none"/></svg>` }} />
-          </div>
-          <div>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: 'white', lineHeight: 1.4, textTransform: 'uppercase' }}>Institut Polytechnique</div>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: 'white', lineHeight: 1.4, textTransform: 'uppercase' }}>de Dakar</div>
-            <div style={{ fontSize: 9.5, color: '#93c5fd', marginTop: 1 }}>Espace Entreprise</div>
-          </div>
+        <div style={{ padding: '18px 20px 16px' }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: 'white' }}>IPD Stages</div>
+          <div style={{ fontSize: 11, color: '#93c5fd', marginTop: 2 }}>Espace Entreprise</div>
         </div>
-        <nav style={{ flex: 1, padding: '8px 8px' }}>
+        <nav style={{ flex: 1, padding: '8px' }}>
           {NAV.map(item => (
             <button key={item.href} onClick={() => router.push(item.href)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', marginBottom: 2, background: item.actif ? '#2563eb' : 'transparent', color: item.actif ? 'white' : 'rgba(255,255,255,0.65)', fontWeight: item.actif ? 600 : 400, fontSize: 13.5, textAlign: 'left' }}>
-              <span style={{ flexShrink: 0, opacity: item.actif ? 1 : 0.75 }}>{item.icon}</span>
-              <span style={{ flex: 1 }}>{item.label}</span>
-              {item.badge && <span style={{ background: '#ef4444', color: 'white', fontSize: 10.5, fontWeight: 700, borderRadius: 10, padding: '1px 6px' }}>{item.badge}</span>}
+              {item.label}
             </button>
           ))}
         </nav>
-        <div style={{ padding: '0 20px 24px', textAlign: 'center' }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: 'rgba(255,255,255,0.15)', fontStyle: 'italic', lineHeight: 1.3 }}>Ton avenir<br/>commence ici</div>
+        <div style={{ padding: '0 20px 24px' }}>
+          <button onClick={() => { localStorage.removeItem('token'); localStorage.removeItem('role'); router.push('/login') }} style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.65)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}>
+            Déconnexion
+          </button>
         </div>
       </aside>
 
-      <main style={{ marginLeft: 235, flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <header style={{ background: 'white', borderBottom: '1px solid #e8edf2', height: 62, padding: '0 28px', display: 'flex', alignItems: 'center', gap: 16, position: 'sticky', top: 0, zIndex: 50 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>Candidatures reçues</div>
+      {/* Contenu */}
+      <main style={{ marginLeft: 235, flex: 1, padding: '32px 32px' }}>
+
+        <div style={{ marginBottom: 28 }}>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: '#0f172a' }}>Mes candidatures</h1>
+          <p style={{ margin: '6px 0 0', fontSize: 14, color: '#64748b' }}>Gérez les candidatures reçues pour vos offres de stage</p>
+        </div>
+
+        {erreur && (
+          <div style={{ padding: '12px 16px', background: '#fee2e2', borderRadius: 10, color: '#dc2626', marginBottom: 20 }}>
+            {erreur}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: 'white' }}>SC</div>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>Senegal Corp</div>
-              <div style={{ fontSize: 11, color: '#64748b' }}>Entreprise</div>
+        )}
+
+        {/* Stats */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
+          {[
+            { label: 'Toutes',     val: candidatures.length,                                           color: '#2563eb', bg: '#dbeafe' },
+            { label: 'En attente', val: candidatures.filter(c => c.statut === 'EN_ATTENTE').length,    color: '#d97706', bg: '#fef3c7' },
+            { label: 'Acceptées',  val: candidatures.filter(c => c.statut === 'ACCEPTEE').length,     color: '#16a34a', bg: '#dcfce7' },
+            { label: 'Refusées',   val: candidatures.filter(c => c.statut === 'REFUSEE').length,      color: '#dc2626', bg: '#fee2e2' },
+          ].map(s => (
+            <div key={s.label} style={{ background: 'white', borderRadius: 12, padding: '18px 20px', border: '1px solid #e8edf2' }}>
+              <div style={{ fontSize: 28, fontWeight: 800, color: s.color }}>{s.val}</div>
+              <div style={{ fontSize: 12, color: '#64748b', marginTop: 4, display: 'inline-block', padding: '2px 10px', background: s.bg, borderRadius: 20 }}>{s.label}</div>
             </div>
+          ))}
+        </div>
+
+        {/* Filtres */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
+          {([['TOUS', 'Toutes'], ['EN_ATTENTE', 'En attente'], ['ACCEPTEE', 'Acceptées'], ['REFUSEE', 'Refusées']] as const).map(([val, label]) => (
+            <button key={val} onClick={() => setFiltre(val)} style={{ padding: '7px 16px', borderRadius: 20, border: '1.5px solid', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderColor: filtre === val ? '#2563eb' : '#e2e8f0', background: filtre === val ? '#2563eb' : 'white', color: filtre === val ? 'white' : '#64748b' }}>
+              {label} ({val === 'TOUS' ? candidatures.length : candidatures.filter(c => c.statut === val).length})
+            </button>
+          ))}
+        </div>
+
+        {/* Liste */}
+        {filtrees.length === 0 ? (
+          <div style={{ background: 'white', borderRadius: 12, border: '1px solid #e8edf2', padding: '60px', textAlign: 'center', color: '#94a3b8', fontSize: 15 }}>
+            Aucune candidature dans cette catégorie
           </div>
-        </header>
-
-        <div style={{ flex: 1, padding: '24px 28px' }}>
-
-          {/* Stats */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
-            {[
-              { label: 'Total',      val: CANDIDATURES_DEMO.length,                                     bg: '#dbeafe', color: '#2563eb' },
-              { label: 'En attente', val: CANDIDATURES_DEMO.filter(c => c.statut === 'En attente').length, bg: '#fef3c7', color: '#d97706' },
-              { label: 'Acceptées',  val: CANDIDATURES_DEMO.filter(c => c.statut === 'Acceptée').length,  bg: '#dcfce7', color: '#16a34a' },
-              { label: 'Refusées',   val: CANDIDATURES_DEMO.filter(c => c.statut === 'Refusée').length,   bg: '#fee2e2', color: '#dc2626' },
-            ].map((s, i) => (
-              <div key={i} style={{ background: 'white', borderRadius: 12, padding: '16px 18px', border: '1px solid #e8edf2' }}>
-                <div style={{ width: 36, height: 36, borderRadius: 8, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke={s.color} strokeWidth="1.8"/><circle cx="9" cy="7" r="4" stroke={s.color} strokeWidth="1.8"/></svg>
-                </div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: '#1e293b', lineHeight: 1 }}>{s.val}</div>
-                <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Filtres */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {filtres.map(f => (
-                <button key={f} onClick={() => setFiltre(f)} style={{ padding: '7px 14px', borderRadius: 20, border: '1px solid', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderColor: filtre === f ? '#2563eb' : '#e2e8f0', background: filtre === f ? '#2563eb' : 'white', color: filtre === f ? 'white' : '#64748b' }}>
-                  {f}
-                </button>
-              ))}
-            </div>
-            <select value={offreFiltree} onChange={e => setOffreFiltree(e.target.value)} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, color: '#475569', background: 'white', cursor: 'pointer' }}>
-              {offres.map(o => <option key={o} value={o}>{o === 'Toutes' ? 'Toutes les offres' : o}</option>)}
-            </select>
-          </div>
-
-          {/* Table */}
-          <div style={{ background: 'white', borderRadius: 12, border: '1px solid #e8edf2', overflow: 'hidden' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 200px 100px 130px 160px', padding: '12px 20px', background: '#f8fafc', borderBottom: '1px solid #e8edf2' }}>
-              {['Candidat', 'Offre', 'Matching', 'Statut', 'Actions'].map(h => (
-                <div key={h} style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</div>
-              ))}
-            </div>
-            {candidaturesFiltrees.map((c, i) => {
-              const sc = statutStyle(c.statut)
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {filtrees.map(cand => {
+              const st = STATUT_STYLE[cand.statut]
               return (
-                <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '1fr 200px 100px 130px 160px', padding: '14px 20px', borderBottom: i < candidaturesFiltrees.length - 1 ? '1px solid #f1f5f9' : 'none', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#e0e7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12.5, fontWeight: 700, color: '#4f46e5', flexShrink: 0 }}>{c.avatar}</div>
-                    <div>
-                      <div style={{ fontSize: 13.5, fontWeight: 600, color: '#1e293b' }}>{c.nom}</div>
-                      <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 1 }}>{c.filiere}</div>
+                <div key={cand.id} style={{ background: 'white', borderRadius: 12, border: '1px solid #e8edf2', padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
+                  {/* Avatar */}
+                  <div style={{ width: 46, height: 46, borderRadius: '50%', background: '#e0e7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, color: '#4f46e5', flexShrink: 0 }}>
+                    {initiales(cand.etudiant.prenom, cand.etudiant.nom)}
+                  </div>
+
+                  {/* Infos */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>
+                      {cand.etudiant.prenom} {cand.etudiant.nom}
+                    </div>
+                    <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>
+                      {cand.etudiant.email} · {cand.offre.titre} · {cand.offre.duree}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                      Candidaté le {formatDate(cand.createdAt)}
                     </div>
                   </div>
-                  <div style={{ fontSize: 12.5, color: '#475569', paddingRight: 8 }}>{c.offre}</div>
-                  <div>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: scoreColor(c.score) }}>{c.score}%</span>
-                    {c.score >= 70 && <div style={{ fontSize: 10, color: '#16a34a', fontWeight: 600 }}>Recommandé</div>}
-                  </div>
-                  <div>
-                    <span style={{ fontSize: 11.5, fontWeight: 600, color: sc.color, background: sc.bg, borderRadius: 6, padding: '3px 10px' }}>{c.statut}</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {c.statut === 'En attente' && (
-                      <>
-                        <button style={{ background: '#dcfce7', border: 'none', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 11.5, color: '#15803d', fontWeight: 600 }}>Accepter</button>
-                        <button style={{ background: '#fee2e2', border: 'none', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 11.5, color: '#dc2626', fontWeight: 600 }}>Refuser</button>
-                      </>
-                    )}
-                    {c.statut !== 'En attente' && (
-                      <span style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>Traité le {c.date}</span>
+
+                  {/* Documents */}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <a href={cand.cvUrl} target="_blank" rel="noopener noreferrer" style={{ padding: '5px 12px', borderRadius: 6, background: '#f1f5f9', color: '#2563eb', fontSize: 12, fontWeight: 600, textDecoration: 'none' }}>
+                      CV
+                    </a>
+                    {cand.lettreUrl && (
+                      <a href={cand.lettreUrl} target="_blank" rel="noopener noreferrer" style={{ padding: '5px 12px', borderRadius: 6, background: '#f1f5f9', color: '#2563eb', fontSize: 12, fontWeight: 600, textDecoration: 'none' }}>
+                        Lettre
+                      </a>
                     )}
                   </div>
+
+                  {/* Statut */}
+                  <span style={{ fontSize: 12, fontWeight: 600, color: st.color, background: st.bg, borderRadius: 20, padding: '4px 12px', whiteSpace: 'nowrap' }}>
+                    {st.label}
+                  </span>
+
+                  {/* Actions */}
+                  {cand.statut === 'EN_ATTENTE' && (
+                    <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                      <button
+                        onClick={() => setModalCandidature(cand)}
+                        style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#dcfce7', color: '#15803d', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        Accepter
+                      </button>
+                      <button
+                        onClick={() => refuser(cand)}
+                        style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#fee2e2', color: '#dc2626', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        Refuser
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             })}
-            {candidaturesFiltrees.length === 0 && (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
-                Aucune candidature dans cette catégorie
-              </div>
-            )}
           </div>
-        </div>
+        )}
       </main>
+
+      {/* Modal acceptation */}
+      {modalCandidature && (
+        <ModalAccepter
+          candidature={modalCandidature}
+          encadreurs={encadreurs}
+          onClose={() => setModalCandidature(null)}
+          onConfirm={accepter}
+          loading={actionLoading}
+        />
+      )}
     </div>
   )
 }

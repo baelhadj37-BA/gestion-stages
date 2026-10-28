@@ -1,7 +1,7 @@
 // app/api/candidatures/[id]/route.ts
 // GET   — Détail d'une candidature
 // PATCH — Accepter ou refuser une candidature (entreprise uniquement)
-//         Accepter crée automatiquement un Stage
+//         Accepter crée automatiquement un Stage + une Convention
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -106,7 +106,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       return NextResponse.json({ message: 'Candidature refusée', candidature: maj })
     }
 
-    // ── ACCEPTER : créer le Stage automatiquement ──
+    // ── ACCEPTER : créer le Stage + la Convention automatiquement ──
     if (!dateDebut || !dateFin) {
       return NextResponse.json(
         { message: 'dateDebut et dateFin sont obligatoires pour accepter une candidature' },
@@ -147,7 +147,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       )
     }
 
-    // Transaction : mettre à jour la candidature + créer le stage
+    // Étape 1 : candidature + stage dans la transaction
     const [candidatureMaj, stage] = await prisma.$transaction([
       prisma.candidature.update({
         where: { id: parseInt(id) },
@@ -165,10 +165,19 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       })
     ])
 
+    // Étape 2 : convention liée au stage (stageId obligatoire)
+    const convention = await prisma.convention.create({
+      data: {
+        stageId: stage.id,
+        statut:  'ETAPE_ETUDIANT',
+      }
+    })
+
     return NextResponse.json({
-      message: 'Candidature acceptée — Stage créé avec succès',
+      message: 'Candidature acceptée — Stage et Convention créés',
       candidature: candidatureMaj,
       stage,
+      convention,
     }, { status: 201 })
 
   } catch (error) {

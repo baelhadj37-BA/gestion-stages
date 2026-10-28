@@ -6,6 +6,8 @@
 import {
   useState,
   useEffect,
+  useCallback,
+  useRef,
   useSyncExternalStore,
   type CSSProperties,
   type ReactNode,
@@ -14,19 +16,20 @@ import { useRouter } from 'next/navigation'
 
 /* ───────── Types ───────── */
 
-type StatutConvention = 'EN_ATTENTE' | 'SIGNEE' | 'VALIDEE' | 'REJETEE'
+type StatutConvention = 'ETAPE_ETUDIANT' | 'ETAPE_ENTREPRISE' | 'ETAPE_ADMIN' | 'VALIDEE' | 'REJETEE'
 
 interface Convention {
   id: number
   statut: StatutConvention
-  dateSignature: string | null
-  fichier: string | null
+  pdfUrl: string | null
+  dateValidation: string | null
   createdAt: string
   stage: {
     id: number
     dateDebut: string
     dateFin: string
     statut: string
+    encadreur: { id: number; nom: string; prenom: string; email: string } | null
     candidature: {
       offre: {
         titre: string
@@ -35,7 +38,6 @@ interface Convention {
       }
     }
   }
-  encadreur: { id: number; nom: string; prenom: string; email: string } | null
 }
 
 /* ───────── Mise à l'échelle ───────── */
@@ -45,7 +47,7 @@ const abonnerRedimension = (cb: () => void) => {
   window.addEventListener('resize', cb)
   return () => window.removeEventListener('resize', cb)
 }
-const lireLargeur = () => window.innerWidth
+const lireLargeur    = () => window.innerWidth
 const largeurServeur = () => LARGEUR_MAQUETTE
 
 /* ───────── Icônes ───────── */
@@ -92,8 +94,8 @@ const ICONS: Record<string, ReactNode> = {
       <line x1="21" y1="12" x2="9" y2="12" />
     </>
   ),
-  arrow: (<polyline points="9 18 15 12 9 6" />),
-  check: (<polyline points="20 6 9 17 4 12" />),
+  arrow:        (<polyline points="9 18 15 12 9 6" />),
+  check:        (<polyline points="20 6 9 17 4 12" />),
   clock: (
     <>
       <circle cx="12" cy="12" r="9" />
@@ -133,10 +135,11 @@ const CARTE: CSSProperties = {
 }
 
 const STATUTS: Record<StatutConvention, { label: string; bg: string; color: string }> = {
-  EN_ATTENTE: { label: 'En attente', bg: '#fff8e1', color: '#f59e0b' },
-  SIGNEE:     { label: 'Signée',     bg: '#e8f0fe', color: '#1d6fe8' },
-  VALIDEE:    { label: 'Validée',    bg: '#e8f5e9', color: '#22c55e' },
-  REJETEE:    { label: 'Rejetée',    bg: '#fce8e8', color: '#ef4444' },
+  ETAPE_ETUDIANT:   { label: 'En attente de votre signature', bg: '#fff8e1', color: '#f59e0b' },
+  ETAPE_ENTREPRISE: { label: 'En attente signature entreprise', bg: '#e8f0fe', color: '#1d6fe8' },
+  ETAPE_ADMIN:      { label: 'En attente validation admin',   bg: '#ede9fe', color: '#7c3aed' },
+  VALIDEE:          { label: 'Validée',                       bg: '#e8f5e9', color: '#22c55e' },
+  REJETEE:          { label: 'Rejetée',                       bg: '#fce8e8', color: '#ef4444' },
 }
 
 /* ───────── Helpers ───────── */
@@ -154,38 +157,53 @@ function initiales(nom: string, prenom: string) {
 ═══════════════════════════════════════════════════════════════════ */
 
 export default function PageConventionsEtudiant() {
-  const router = useRouter()
+  const router   = useRouter()
+  const tokenRef = useRef<string>('')
 
   const largeur = useSyncExternalStore(abonnerRedimension, lireLargeur, largeurServeur)
-  const echelle  = largeur / LARGEUR_MAQUETTE
+  const echelle = largeur / LARGEUR_MAQUETTE
 
-  const [conventions, setConventions]       = useState<Convention[]>([])
-  const [filtreStatut, setFiltreStatut]     = useState<StatutConvention | 'TOUS'>('TOUS')
-  const [recherche, setRecherche]           = useState('')
-  const [chargement, setChargement]         = useState(true)
-  const [erreur, setErreur]                 = useState('')
-  const [utilisateur, setUtilisateur]       = useState<{ nom: string; prenom: string } | null>(null)
+  const [conventions, setConventions]   = useState<Convention[]>([])
+  const [filtreStatut, setFiltreStatut] = useState<StatutConvention | 'TOUS'>('TOUS')
+  const [recherche, setRecherche]       = useState('')
+  const [chargement, setChargement]     = useState(true)
+  const [erreur, setErreur]             = useState('')
+  const [utilisateur, setUtilisateur]   = useState<{ nom: string; prenom: string } | null>(null)
+
+  const loadConventions = useCallback(async (tok: string) => {
+    const r = await fetch('/api/conventions', {
+      headers: { authorization: `Bearer ${tok}` },
+    })
+    const json = await r.json()
+    if (json.conventions) {
+      setConventions(json.conventions)
+    } else {
+      setErreur(json.message ?? 'Erreur')
+    }
+  }, [])
 
   useEffect(() => {
-    const token      = localStorage.getItem('token')
-    const roleStocke = localStorage.getItem('role')
-    if (!token || roleStocke !== 'ETUDIANT') { router.push('/login'); return }
+    async function init() {
+      const token      = localStorage.getItem('token') || ''
+      const roleStocke = localStorage.getItem('role')
+      if (!token || roleStocke !== 'ETUDIANT') { router.push('/login'); return }
+      tokenRef.current = token
 
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]))
-      setUtilisateur({ nom: payload.nom ?? '', prenom: payload.prenom ?? '' })
-    } catch { /* ignore */ }
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]))
+        setUtilisateur({ nom: payload.nom ?? '', prenom: payload.prenom ?? '' })
+      } catch { /* ignore */ }
 
-    fetch('/api/conventions', { headers: { authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(json => { if (json.data) setConventions(json.data); else setErreur(json.message ?? 'Erreur') })
-      .catch(() => setErreur('Impossible de charger les conventions'))
-      .finally(() => setChargement(false))
-  }, [router])
+      await loadConventions(token)
+      setChargement(false)
+    }
+    init().catch(() => setChargement(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const conventionsFiltrees = conventions.filter(c => {
-    const matchStatut   = filtreStatut === 'TOUS' || c.statut === filtreStatut
-    const offre         = c.stage.candidature.offre
+    const matchStatut    = filtreStatut === 'TOUS' || c.statut === filtreStatut
+    const offre          = c.stage.candidature.offre
     const matchRecherche = recherche === '' ||
       offre.titre.toLowerCase().includes(recherche.toLowerCase()) ||
       (offre.entreprise?.nom ?? '').toLowerCase().includes(recherche.toLowerCase())
@@ -246,10 +264,10 @@ export default function PageConventionsEtudiant() {
 
         <nav style={{ flex: 1, padding: '16px 0' }}>
           {[
-            { label: 'Tableau de bord',    href: '/dashboard/etudiant',              icon: 'briefcase' },
-            { label: 'Offres de stage',    href: '/dashboard/etudiant/offres',        icon: 'briefcase' },
-            { label: 'Mes candidatures',   href: '/dashboard/etudiant/candidatures',  icon: 'candidatures' },
-            { label: 'Conventions',        href: '/dashboard/etudiant/conventions',   icon: 'convention', actif: true },
+            { label: 'Tableau de bord',  href: '/dashboard/etudiant',             icon: 'briefcase' },
+            { label: 'Offres de stage',  href: '/dashboard/etudiant/offres',       icon: 'briefcase' },
+            { label: 'Mes candidatures', href: '/dashboard/etudiant/candidatures', icon: 'candidatures' },
+            { label: 'Conventions',      href: '/dashboard/etudiant/conventions',  icon: 'convention', actif: true },
           ].map(item => (
             <button key={item.href} onClick={() => router.push(item.href)} style={{
               display: 'flex', alignItems: 'center', gap: 12,
@@ -299,7 +317,7 @@ export default function PageConventionsEtudiant() {
               Conventions de stage
             </h1>
             <p style={{ margin: '6px 0 0', color: 'rgba(255,255,255,0.7)', fontSize: 14 }}>
-              Retrouvez ici toutes vos conventions de stage et suivez leur état d'avancement.
+              Retrouvez ici toutes vos conventions de stage et suivez leur état d&apos;avancement.
             </p>
           </div>
         </div>
@@ -308,12 +326,15 @@ export default function PageConventionsEtudiant() {
 
           {/* Filtres */}
           <div style={{ display: 'flex', gap: 12, marginBottom: 28, alignItems: 'center', flexWrap: 'wrap' }}>
-            {/* Filtre statut boutons */}
-            {(['TOUS', 'EN_ATTENTE', 'SIGNEE', 'VALIDEE', 'REJETEE'] as const).map(s => {
+            {(['TOUS', 'ETAPE_ETUDIANT', 'ETAPE_ENTREPRISE', 'ETAPE_ADMIN', 'VALIDEE', 'REJETEE'] as const).map(s => {
               const actif = filtreStatut === s
               const labels: Record<string, string> = {
-                TOUS: 'Toutes les conventions', EN_ATTENTE: 'En attente',
-                SIGNEE: 'Signées', VALIDEE: 'Validées', REJETEE: 'Rejetées',
+                TOUS:             'Toutes',
+                ETAPE_ETUDIANT:   'À signer',
+                ETAPE_ENTREPRISE: 'Chez l\'entreprise',
+                ETAPE_ADMIN:      'Chez l\'admin',
+                VALIDEE:          'Validées',
+                REJETEE:          'Rejetées',
               }
               return (
                 <button key={s} onClick={() => setFiltreStatut(s)} style={{
@@ -324,9 +345,6 @@ export default function PageConventionsEtudiant() {
                   background: actif ? BLUE : '#fff',
                   color: actif ? '#fff' : MUTED,
                 }}>
-                  {s === 'TOUS' && <Icon id="convention" size={14} color={actif ? '#fff' : MUTED} />}
-                  {s === 'EN_ATTENTE' && <Icon id="clock" size={14} color={actif ? '#fff' : MUTED} />}
-                  {(s === 'SIGNEE' || s === 'VALIDEE') && <Icon id="check" size={14} color={actif ? '#fff' : MUTED} />}
                   {labels[s]}
                 </button>
               )
@@ -334,7 +352,8 @@ export default function PageConventionsEtudiant() {
 
             {/* Recherche */}
             <div style={{ position: 'relative', marginLeft: 'auto', minWidth: 260 }}>
-              <Icon id="search" size={16} color={MUTED} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+              <Icon id="search" size={16} color={MUTED}
+                style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
               <input
                 type="text"
                 placeholder="Rechercher par entreprise, poste…"
@@ -363,8 +382,8 @@ export default function PageConventionsEtudiant() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {conventionsFiltrees.map(conv => {
-                const offre = conv.stage.candidature.offre
-                const ent   = offre.entreprise
+                const offre  = conv.stage.candidature.offre
+                const ent    = offre.entreprise
                 const statut = STATUTS[conv.statut]
 
                 return (
@@ -413,10 +432,10 @@ export default function PageConventionsEtudiant() {
                           <Icon id="calendar" size={12} color={MUTED} />
                           Du {formatDate(conv.stage.dateDebut)} au {formatDate(conv.stage.dateFin)}
                         </span>
-                        {conv.encadreur && (
+                        {conv.stage.encadreur && (
                           <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: MUTED }}>
                             <Icon id="user" size={12} color={MUTED} />
-                            Encadreur : {conv.encadreur.prenom} {conv.encadreur.nom}
+                            Encadreur : {conv.stage.encadreur.prenom} {conv.stage.encadreur.nom}
                           </span>
                         )}
                       </div>

@@ -35,6 +35,9 @@ interface Candidature {
   score: number; createdAt: string
   offre: { id: number; titre: string; duree: string; localisation: string; entreprise: { nom: string; prenom: string } }
 }
+interface Notification {
+  id: number; message: string; type: string; lu: boolean; createdAt: string
+}
 
 function scoreCouleur(s: number) {
   if (s >= 70) return { color: '#15803d', bg: '#dcfce7', label: 'Excellent matching' }
@@ -59,7 +62,6 @@ function bonjour() {
   return 'Bonsoir'
 }
 
-// Couleurs avatar entreprises
 const AVATAR_COLORS = ['#1d6fe8','#7c3aed','#ea580c','#15803d','#dc2626','#0891b2']
 function avatarColor(str: string) {
   let h = 0; for (let i = 0; i < str.length; i++) h = str.charCodeAt(i) + ((h << 5) - h)
@@ -96,11 +98,12 @@ export default function DashboardEtudiant() {
   const [vue, setVue]     = useState('tableau')
   const tokenRef = useRef('')
 
-  const [profil,       setProfil]       = useState<ProfilEtudiant | null>(null)
-  const [offres,       setOffres]       = useState<OffreMatching[]>([])
-  const [candidatures, setCandidatures] = useState<Candidature[]>([])
-  const [chgtOffres,   setChgtOffres]   = useState(false)
-  const [chgtCandid,   setChgtCandid]   = useState(false)
+  const [profil,         setProfil]         = useState<ProfilEtudiant | null>(null)
+  const [offres,         setOffres]         = useState<OffreMatching[]>([])
+  const [candidatures,   setCandidatures]   = useState<Candidature[]>([])
+  const [notifications,  setNotifications]  = useState<Notification[]>([])
+  const [chgtOffres,     setChgtOffres]     = useState(false)
+  const [chgtCandid,     setChgtCandid]     = useState(false)
 
   const [filtreOffre,       setFiltreOffre]       = useState('')
   const [filtreScore,       setFiltreScore]       = useState<'tous'|'excellent'|'moyen'|'faible'>('tous')
@@ -157,18 +160,52 @@ export default function DashboardEtudiant() {
     } finally { setChgtCandid(false) }
   }, [])
 
+  const loadNotifs = useCallback(async (tok: string) => {
+    try {
+      const r = await fetch('/api/etudiant/notifications', { headers: { Authorization: `Bearer ${tok}` } })
+      const d = await r.json()
+      if (r.ok) setNotifications(d.notifications || [])
+    } catch { /* silencieux */ }
+  }, [])
+
+  const marquerLu = useCallback(async (id: number) => {
+    const tok = tokenRef.current
+    await fetch('/api/etudiant/notifications', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+      body: JSON.stringify({ id }),
+    })
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, lu: true } : n))
+  }, [])
+
+  const toutMarquer = useCallback(async () => {
+    const tok = tokenRef.current
+    await fetch('/api/etudiant/notifications', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+      body: JSON.stringify({ toutMarquer: true }),
+    })
+    setNotifications(prev => prev.map(n => ({ ...n, lu: true })))
+  }, [])
+
   useEffect(() => {
-    const t = localStorage.getItem('token') || ''
-    if (!t) { router.push('/login'); return }
-    tokenRef.current = t
-    loadProfil(t)
-    loadOffres(t)
-    loadCandid(t)
+    async function init() {
+      const t = localStorage.getItem('token') || ''
+      if (!t) { router.push('/login'); return }
+      tokenRef.current = t
+      await Promise.all([loadProfil(t), loadOffres(t), loadCandid(t), loadNotifs(t)])
+    }
+    init().catch(() => {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const deco = () => { localStorage.removeItem('token'); router.push('/login') }
-  const nav  = (id: string) => { setVue(id); setMsgProfil(''); setErrProfil('') }
+  const nav  = (id: string) => {
+    setVue(id)
+    setMsgProfil('')
+    setErrProfil('')
+    if (id === 'notifications') loadNotifs(tokenRef.current)
+  }
 
   const completion = (() => {
     if (!profil) return 0
@@ -183,6 +220,9 @@ export default function DashboardEtudiant() {
     return txt && sc
   })
   const candidFiltrees = filtreCandidature === 'tous' ? candidatures : candidatures.filter(c => c.statut === filtreCandidature)
+
+  // Nombre de notifs non lues (vraies notifs depuis la BDD)
+  const nbNotifsNonLues = notifications.filter(n => !n.lu).length
 
   const postuler = async () => {
     if (!offreSelect || !cvUrl.trim()) { setMsgPost('Le lien CV est obligatoire'); return }
@@ -306,25 +346,22 @@ export default function DashboardEtudiant() {
         <input placeholder="Rechercher une offre, une entreprise, un domaine..." style={{ border: 'none', background: 'none', outline: 'none', fontSize: 13, color: NAVY, width: '100%', fontFamily: 'inherit' }} />
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        {/* Cloche */}
-        {(() => {
-          const nbNotif =
-            candidatures.filter(c => c.statut === 'ACCEPTEE' || c.statut === 'REFUSEE').length +
-            offres.filter(o => (o.score ?? 0) >= 70).length
-          return (
-            <button onClick={() => nav('candidatures')} aria-label="Notifications" style={{ position: 'relative', color: NAVY, background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', padding: 4 }}>
-              <svg width="26" height="26" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-              </svg>
-              {nbNotif > 0 && (
-                <span style={{ position: 'absolute', top: -4, right: -5, minWidth: 18, height: 18, padding: '0 4px', borderRadius: 9, background: '#ef4444', color: WHITE, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {nbNotif > 99 ? '99+' : nbNotif}
-                </span>
-              )}
-            </button>
-          )
-        })()}
+        {/* Cloche — utilise les vraies notifications non lues */}
+        <button
+          onClick={() => nav('notifications')}
+          aria-label="Notifications"
+          style={{ position: 'relative', color: NAVY, background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', padding: 4 }}
+        >
+          <svg width="26" height="26" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          {nbNotifsNonLues > 0 && (
+            <span style={{ position: 'absolute', top: -4, right: -5, minWidth: 18, height: 18, padding: '0 4px', borderRadius: 9, background: '#ef4444', color: WHITE, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {nbNotifsNonLues > 99 ? '99+' : nbNotifsNonLues}
+            </span>
+          )}
+        </button>
         {/* Avatar profil + dropdown */}
         {profil && (
           <div style={{ position: 'relative' }}>
@@ -367,11 +404,9 @@ export default function DashboardEtudiant() {
         <h2 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 800, color: NAVY }}>{bonjour()}, {profil.prenom} ! 👋</h2>
         <p style={{ margin: 0, fontSize: 13, color: MUTED }}>Voici un aperçu de votre parcours et des opportunités qui vous correspondent.</p>
       </div>
-      {/* Texte cursif décoratif */}
       <div style={{ position: 'absolute', right: 200, top: 18, fontFamily: "'Segoe Script','Brush Script MT',cursive", fontSize: 16, color: NAVY, opacity: 0.5, transform: 'rotate(-8deg)' }}>
         Votre avenir<br />se construit maintenant !
       </div>
-      {/* Image bâtiment IPD (placeholder bleu) */}
       <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 180, background: 'linear-gradient(135deg, #1d6fe820, #0b2f7a30)', borderRadius: '0 16px 16px 0', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <svg width="80" height="80" fill="none" viewBox="0 0 100 100" style={{ opacity: 0.15 }}>
           <rect x="10" y="40" width="80" height="55" fill={NAVY}/>
@@ -556,7 +591,7 @@ export default function DashboardEtudiant() {
               )}
             </div>
 
-            {/* Notifications récentes */}
+            {/* Notifications récentes — vraies données BDD */}
             <div style={cardSt}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -565,39 +600,106 @@ export default function DashboardEtudiant() {
                   </div>
                   <span style={{ fontWeight: 700, fontSize: 13, color: NAVY }}>Notifications récentes</span>
                 </div>
-                <button style={{ border: 'none', background: 'none', color: BLUE, fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>Voir toutes →</button>
+                {nbNotifsNonLues > 0 && (
+                  <button onClick={toutMarquer} style={{ border: 'none', background: 'none', color: BLUE, fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
+                    Tout marquer lu
+                  </button>
+                )}
               </div>
-              {candidatures.length === 0 && offres.length === 0
+              {notifications.length === 0
                 ? <div style={{ color: MUTED, fontSize: 12, textAlign: 'center', padding: '10px 0' }}>Aucune notification</div>
-                : <>
-                    {candidatures.filter(c => c.statut === 'ACCEPTEE').slice(0,1).map(c => (
-                      <div key={c.id} style={{ display: 'flex', gap: 10, padding: '9px 0', borderBottom: '1px solid #f9fafb' }}>
-                        <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke="#15803d" strokeWidth="2" strokeLinecap="round"/><polyline points="22,4 12,14.01 9,11.01" stroke="#15803d" strokeWidth="2" strokeLinecap="round"/></svg>
+                : notifications.slice(0, 5).map(n => {
+                    const isAccept = n.type === 'CANDIDATURE_ACCEPTEE'
+                    const isRefus  = n.type === 'CANDIDATURE_REFUSEE'
+                    const iconColor = isAccept ? '#15803d' : isRefus ? '#dc2626' : BLUE
+                    const iconBg    = isAccept ? '#dcfce7' : isRefus ? '#fee2e2' : '#e8f0fe'
+                    return (
+                      <div
+                        key={n.id}
+                        onClick={() => !n.lu && marquerLu(n.id)}
+                        style={{ display: 'flex', gap: 10, padding: '9px 0', borderBottom: '1px solid #f9fafb', cursor: n.lu ? 'default' : 'pointer', opacity: n.lu ? 0.7 : 1 }}
+                      >
+                        <div style={{ width: 30, height: 30, borderRadius: '50%', background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          {isAccept
+                            ? <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke={iconColor} strokeWidth="2" strokeLinecap="round"/><polyline points="22,4 12,14.01 9,11.01" stroke={iconColor} strokeWidth="2" strokeLinecap="round"/></svg>
+                            : isRefus
+                              ? <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke={iconColor} strokeWidth="2"/><line x1="15" y1="9" x2="9" y2="15" stroke={iconColor} strokeWidth="2" strokeLinecap="round"/><line x1="9" y1="9" x2="15" y2="15" stroke={iconColor} strokeWidth="2" strokeLinecap="round"/></svg>
+                              : <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke={iconColor} strokeWidth="2"/></svg>
+                          }
                         </div>
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: NAVY }}>Candidature acceptée !</div>
-                          <div style={{ fontSize: 11, color: MUTED }}>{c.offre.titre} — {c.offre.entreprise.nom}</div>
+                          <div style={{ fontSize: 12, fontWeight: n.lu ? 400 : 700, color: NAVY }}>{n.message}</div>
+                          <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>{fmtDate(n.createdAt)}</div>
                         </div>
-                        <div style={{ fontSize: 10, color: MUTED, whiteSpace: 'nowrap' }}>récent</div>
+                        {!n.lu && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', flexShrink: 0, marginTop: 4 }} />}
                       </div>
-                    ))}
-                    {offres.slice(0,2).map(o => (
-                      <div key={o.id} style={{ display: 'flex', gap: 10, padding: '9px 0', borderBottom: '1px solid #f9fafb' }}>
-                        <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2" stroke={BLUE} strokeWidth="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" stroke={BLUE} strokeWidth="2"/></svg>
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: NAVY }}>Nouvelle offre disponible</div>
-                          <div style={{ fontSize: 11, color: MUTED }}>{o.titre} — {o.entreprise.nom}</div>
-                        </div>
-                        <div style={{ fontSize: 10, color: MUTED, whiteSpace: 'nowrap' }}>récent</div>
-                      </div>
-                    ))}
-                  </>}
+                    )
+                  })}
+              {notifications.length > 5 && (
+                <button onClick={() => nav('notifications')} style={{ width: '100%', border: 'none', background: 'none', color: BLUE, fontSize: 12, cursor: 'pointer', fontWeight: 600, paddingTop: 10, textAlign: 'center' }}>
+                  Voir toutes les notifications →
+                </button>
+              )}
             </div>
           </div>
         </div>
+      </div>
+    </>
+  )
+
+  // ── NOTIFICATIONS (vue complète) ─────────────────────────
+  const renderNotifications = () => (
+    <>
+      {topbar}
+      <div style={{ padding: '24px 24px 40px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div>
+            <h2 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 800, color: NAVY }}>Notifications</h2>
+            <p style={{ margin: 0, fontSize: 13, color: MUTED }}>{nbNotifsNonLues} non lue{nbNotifsNonLues > 1 ? 's' : ''}</p>
+          </div>
+          {nbNotifsNonLues > 0 && (
+            <button onClick={toutMarquer} style={{ background: NAVY, color: WHITE, border: 'none', borderRadius: 9, padding: '9px 20px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+              Tout marquer comme lu
+            </button>
+          )}
+        </div>
+        {notifications.length === 0
+          ? <div style={{ ...cardSt, textAlign: 'center', padding: 60 }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🔔</div>
+              <div style={{ fontWeight: 700, color: NAVY, marginBottom: 6 }}>Aucune notification</div>
+              <div style={{ fontSize: 13, color: MUTED }}>Vous serez notifié ici lors de réponses à vos candidatures.</div>
+            </div>
+          : <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {notifications.map(n => {
+                const isAccept = n.type === 'CANDIDATURE_ACCEPTEE'
+                const isRefus  = n.type === 'CANDIDATURE_REFUSEE'
+                const iconColor = isAccept ? '#15803d' : isRefus ? '#dc2626' : BLUE
+                const iconBg    = isAccept ? '#dcfce7' : isRefus ? '#fee2e2' : '#e8f0fe'
+                return (
+                  <div
+                    key={n.id}
+                    onClick={() => !n.lu && marquerLu(n.id)}
+                    style={{ ...cardSt, display: 'flex', gap: 14, alignItems: 'flex-start', cursor: n.lu ? 'default' : 'pointer', borderLeft: n.lu ? '3px solid transparent' : `3px solid ${iconColor}` }}
+                  >
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {isAccept
+                        ? <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke={iconColor} strokeWidth="2" strokeLinecap="round"/><polyline points="22,4 12,14.01 9,11.01" stroke={iconColor} strokeWidth="2" strokeLinecap="round"/></svg>
+                        : isRefus
+                          ? <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke={iconColor} strokeWidth="2"/><line x1="15" y1="9" x2="9" y2="15" stroke={iconColor} strokeWidth="2" strokeLinecap="round"/><line x1="9" y1="9" x2="15" y2="15" stroke={iconColor} strokeWidth="2" strokeLinecap="round"/></svg>
+                          : <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke={iconColor} strokeWidth="2"/></svg>
+                      }
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, fontWeight: n.lu ? 400 : 700, color: NAVY, marginBottom: 4 }}>{n.message}</div>
+                      <div style={{ fontSize: 12, color: MUTED }}>{fmtDate(n.createdAt)}</div>
+                    </div>
+                    {!n.lu && (
+                      <span style={{ background: '#ef4444', color: WHITE, fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, flexShrink: 0 }}>Nouveau</span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>}
       </div>
     </>
   )
@@ -768,7 +870,6 @@ export default function DashboardEtudiant() {
                       </div>
                     ))}
                   </div>
-                  {/* Section stage */}
                   <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid #eef2fa' }}>
                     <div style={{ fontWeight: 700, fontSize: 14, color: NAVY, marginBottom: 16 }}>Informations de stage</div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
@@ -789,8 +890,6 @@ export default function DashboardEtudiant() {
                       ))}
                     </div>
                   </div>
-
-                  {/* Champ CV — pleine largeur */}
                   <div style={{ marginTop: 20 }}>
                     <label style={{ display: 'block', fontSize: 12, color: MUTED, marginBottom: 6, fontWeight: 600 }}>
                       📄 Lien CV (Google Drive, OneDrive, etc.)
@@ -808,8 +907,6 @@ export default function DashboardEtudiant() {
                           </div>
                         : <div style={{ fontSize: 14, color: MUTED, padding: '10px 0', borderBottom: '1px solid #f4f7fc' }}>— Aucun CV renseigné</div>}
                   </div>
-
-                  {/* Photo de profil */}
                   <div style={{ marginTop: 20 }}>
                     <label style={{ display: 'block', fontSize: 12, color: MUTED, marginBottom: 6, fontWeight: 600 }}>
                       🖼️ Photo de profil (lien URL)
@@ -818,6 +915,7 @@ export default function DashboardEtudiant() {
                       ? <input type="url" value={formInfos.photoUrl} onChange={e => setFormInfos(p => ({ ...p, photoUrl: e.target.value }))} placeholder="https://..." style={{ ...inputSt, padding: '11px 14px', fontSize: 14 }} />
                       : formInfos.photoUrl
                         ? <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={formInfos.photoUrl} alt="Photo profil" style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover', border: `2px solid ${BLUE}` }} />
                             <span style={{ fontSize: 13, color: MUTED }}>Photo enregistrée</span>
                           </div>
@@ -902,12 +1000,13 @@ export default function DashboardEtudiant() {
     <div style={{ display: 'flex', minHeight: hauteurPage, fontFamily: "'Inter', system-ui, sans-serif", background: BG, zoom: echelle } as React.CSSProperties & { zoom?: number }}>
       {sidebar}
       <main style={{ flex: 1, minHeight: hauteurPage, overflow: 'auto' }}>
-        {vue === 'tableau'      && renderTableau()}
-        {vue === 'offres'       && renderOffres()}
-        {vue === 'candidatures' && renderCandidatures()}
-        {vue === 'journal'      && <>{topbar}<div style={{ padding: '24px' }}><h2 style={{ color: NAVY }}>Journal de bord</h2><div style={{ ...cardSt, textAlign: 'center', padding: 60, color: MUTED }}>📓 Ce module s&apos;active une fois votre stage démarré.</div></div></>}
-        {vue === 'convention'   && <>{topbar}<div style={{ padding: '24px' }}><h2 style={{ color: NAVY }}>Convention de stage</h2><div style={{ ...cardSt, textAlign: 'center', padding: 60, color: MUTED }}>📄 Ce module s&apos;active une fois votre candidature acceptée.</div></div></>}
-        {vue === 'profil'       && renderProfil()}
+        {vue === 'tableau'         && renderTableau()}
+        {vue === 'offres'          && renderOffres()}
+        {vue === 'candidatures'    && renderCandidatures()}
+        {vue === 'notifications'   && renderNotifications()}
+        {vue === 'journal'         && <>{topbar}<div style={{ padding: '24px' }}><h2 style={{ color: NAVY }}>Journal de bord</h2><div style={{ ...cardSt, textAlign: 'center', padding: 60, color: MUTED }}>📓 Ce module s&apos;active une fois votre stage démarré.</div></div></>}
+        {vue === 'convention'      && <>{topbar}<div style={{ padding: '24px' }}><h2 style={{ color: NAVY }}>Convention de stage</h2><div style={{ ...cardSt, textAlign: 'center', padding: 60, color: MUTED }}>📄 Ce module s&apos;active une fois votre candidature acceptée.</div></div></>}
+        {vue === 'profil'          && renderProfil()}
       </main>
       {modal}
     </div>

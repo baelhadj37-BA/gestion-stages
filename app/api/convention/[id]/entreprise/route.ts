@@ -25,7 +25,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
 
-    let body: any = {};
+    let body: { action?: string; motifRejet?: string } = {};
     try {
       body = await req.json();
     } catch {
@@ -62,7 +62,8 @@ export async function PATCH(
       return NextResponse.json({ error: "Non autorisé sur ce stage" }, { status: 403 });
     }
 
-    if (convention.statut !== "ETAPE_ETUDIANT") {
+    // L'entreprise signe à l'étape ETAPE_ENTREPRISE
+    if (convention.statut !== "ETAPE_ENTREPRISE") {
       return NextResponse.json(
         { error: `Action impossible depuis le statut actuel: ${convention.statut}` },
         { status: 409 }
@@ -77,24 +78,27 @@ export async function PATCH(
 
       await notifierUtilisateur(
         convention.stage.etudiantId,
-        `Votre convention a été rejetée. Motif : ${motifRejet}`,
+        `Votre convention a été rejetée par l'entreprise. Motif : ${motifRejet}`,
         "CONVENTION_REJETEE"
       );
 
       return NextResponse.json(rejetee);
     }
 
+    // Valider : ETAPE_ENTREPRISE → ETAPE_ADMIN
     const updated = await prisma.convention.update({
       where: { id },
-      data: { statut: "ETAPE_ENTREPRISE" },
+      data: { statut: "ETAPE_ADMIN", dateValidation: new Date() },
     });
 
+    // Notifier l'étudiant
     await notifierUtilisateur(
       convention.stage.etudiantId,
-      "Votre convention a été validée par l'entreprise, elle passe en validation administrative.",
+      "L'entreprise a signé votre convention. Elle passe maintenant en validation administrative.",
       "CONVENTION_ETAPE_SUIVANTE"
     );
 
+    // Notifier tous les admins
     const admins = await prisma.user.findMany({ where: { role: "ADMIN" } });
     for (const admin of admins) {
       await notifierUtilisateur(

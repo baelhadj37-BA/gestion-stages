@@ -494,14 +494,16 @@ export default function EntrepriseDashboard() {
     }
   }
 
+  // ✅ CORRECTION : appel vers /api/entreprise/candidatures avec { candidatureId, statut }
+  // (anciennement /api/candidatures avec { id, statut } → ne créait pas Stage+Convention)
   const changerStatutCandidature = async (candidatureId: number, statut: string) => {
     const token = localStorage.getItem('token')
     setActionEnCours(candidatureId)
     try {
-      const res = await fetch('/api/candidatures', {
+      const res = await fetch('/api/entreprise/candidatures', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({ id: candidatureId, statut }),
+        body: JSON.stringify({ candidatureId, statut }),
       })
       if (!res.ok) return
       setCandidatures(prev => prev.map(c => c.id === candidatureId ? { ...c, statut } : c))

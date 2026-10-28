@@ -500,8 +500,6 @@ export default function AdminDashboard() {
   const [chargementCandidatures, setChargementCandidatures] = useState(false)
   const [erreurCandidatures, setErreurCandidatures] = useState('')
   const [filtreCandidatures, setFiltreCandidatures] = useState<Statut | 'TOUTES'>('TOUTES')
-  const [changementStatutId, setChangementStatutId] = useState<number | null>(null)
-
   const largeur = useSyncExternalStore(abonnerRedimension, lireLargeur, largeurServeur)
 
   useEffect(() => {
@@ -889,34 +887,6 @@ export default function AdminDashboard() {
       setErreurConventions('Impossible de contacter le serveur.')
     } finally {
       setActionConventionId(null)
-    }
-  }
-
-  const changerStatutCandidature = async (id: number, statut: Statut) => {
-    const token = localStorage.getItem('token')
-    setChangementStatutId(id)
-    try {
-      const res = await fetch('/api/candidatures', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({ id, statut }),
-      })
-      if (res.status === 401 || res.status === 403) {
-        seDeconnecter()
-        return
-      }
-      if (!res.ok) {
-        setErreurCandidatures('Impossible de modifier le statut.')
-        return
-      }
-      // Mettre à jour localement
-      setCandidatures((prev) =>
-        prev.map((c) => (c.id === id ? { ...c, statut } : c))
-      )
-    } catch {
-      setErreurCandidatures('Impossible de contacter le serveur.')
-    } finally {
-      setChangementStatutId(null)
     }
   }
 
@@ -1841,7 +1811,7 @@ export default function AdminDashboard() {
                     <table style={{ width: '100%', minWidth: 750, borderCollapse: 'collapse', textAlign: 'left', fontSize: 13 }}>
                       <thead style={{ background: '#f4f7fc' }}>
                         <tr>
-                          {['Étudiant', 'Offre de stage', 'Entreprise', 'Date', 'Statut', 'Documents', 'Action'].map((h) => (
+                          {['Étudiant', 'Offre de stage', 'Entreprise', 'Date', 'Statut', 'Documents'].map((h) => (
                             <th key={h} style={th}>{h}</th>
                           ))}
                         </tr>
@@ -1855,7 +1825,6 @@ export default function AdminDashboard() {
                           const nomEntreprise = c.offre?.entreprise
                             ? `${c.offre.entreprise.nom} ${c.offre.entreprise.prenom}`.trim()
                             : '—'
-                          const enCoursDeChangement = changementStatutId === c.id
 
                           return (
                             <tr key={c.id} style={{ borderTop: '1px solid #eef2fa' }}>
@@ -1975,69 +1944,6 @@ export default function AdminDashboard() {
                                     </a>
                                   )}
                                 </div>
-                              </td>
-
-                              {/* Actions */}
-                              <td style={{ padding: '14px 16px' }}>
-                                {enCoursDeChangement ? (
-                                  <span style={{ fontSize: 12, color: MUTED }}>…</span>
-                                ) : c.statut === 'EN_ATTENTE' ? (
-                                  <div style={{ display: 'flex', gap: 8 }}>
-                                    <button
-                                      onClick={() => changerStatutCandidature(c.id, 'ACCEPTEE')}
-                                      title="Accepter"
-                                      style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        width: 32,
-                                        height: 32,
-                                        borderRadius: 8,
-                                        border: 'none',
-                                        background: '#d9f5e3',
-                                        color: '#15803d',
-                                        cursor: 'pointer',
-                                      }}
-                                    >
-                                      <Icon name="check" size={16} sw={2.5} />
-                                    </button>
-                                    <button
-                                      onClick={() => changerStatutCandidature(c.id, 'REFUSEE')}
-                                      title="Refuser"
-                                      style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        width: 32,
-                                        height: 32,
-                                        borderRadius: 8,
-                                        border: 'none',
-                                        background: '#fde2e2',
-                                        color: '#b91c1c',
-                                        cursor: 'pointer',
-                                      }}
-                                    >
-                                      <Icon name="x" size={16} sw={2.5} />
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <button
-                                    onClick={() => changerStatutCandidature(c.id, 'EN_ATTENTE')}
-                                    title="Remettre en attente"
-                                    style={{
-                                      padding: '4px 10px',
-                                      borderRadius: 6,
-                                      border: '1px solid #dfe6f3',
-                                      background: '#fff',
-                                      color: MUTED,
-                                      fontSize: 12,
-                                      fontWeight: 500,
-                                      cursor: 'pointer',
-                                    }}
-                                  >
-                                    Remettre en attente
-                                  </button>
-                                )}
                               </td>
                             </tr>
                           )
@@ -2368,7 +2274,7 @@ export default function AdminDashboard() {
                                     {stage.candidature.offre.entreprise && (
                                       <div style={{ fontSize: 12, color: MUTED }}>{stage.candidature.offre.entreprise.nom} {stage.candidature.offre.entreprise.prenom}</div>
                                     )}
-                                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Enc. : {stage.encadreur.prenom} {stage.encadreur.nom}</div>
+                                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Enc. : {stage.encadreur?.prenom ?? '—'} {stage.encadreur?.nom ?? ''}</div>
                                   </td>
                                   {/* Période */}
                                   <td style={{ padding: '14px 16px', fontSize: 13, color: MUTED, whiteSpace: 'nowrap' }}>
