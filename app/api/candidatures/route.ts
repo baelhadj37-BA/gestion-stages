@@ -10,15 +10,13 @@ export async function GET(request: NextRequest) {
     if (!tokenData) return NextResponse.json({ message: 'Non autorisé' }, { status: 401 })
 
     const where: any = {}
-    const include: any = { offre: true }
 
     if (tokenData.role === 'ETUDIANT') {
       where.etudiantId = tokenData.userId
     } else if (tokenData.role === 'ENTREPRISE') {
       where.offre = { entrepriseId: tokenData.userId }
-      include.etudiant = { select: { id: true, nom: true, prenom: true, email: true } }
     } else if (tokenData.role === 'ADMIN') {
-      include.etudiant = { select: { id: true, nom: true, prenom: true, email: true } }
+      // pas de filtre — admin voit tout
     } else {
       return NextResponse.json({ message: 'Accès non autorisé' }, { status: 403 })
     }
@@ -26,7 +24,14 @@ export async function GET(request: NextRequest) {
     const candidatures = await (prisma.candidature as any).findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      include,
+      include: {
+        etudiant: { select: { id: true, nom: true, prenom: true, email: true, classe: true, filiere: true } },
+        offre: {
+          include: {
+            entreprise: { select: { id: true, nom: true, prenom: true } },
+          },
+        },
+      },
     })
 
     return NextResponse.json({ candidatures, total: candidatures.length })
