@@ -44,7 +44,14 @@ export default function ConventionsAdminPage() {
       return
     }
 
-    chargerListe(token).finally(() => setChargement(false))
+    const init = async () => {
+      try {
+        await chargerListe(token)
+      } finally {
+        setChargement(false)
+      }
+    }
+    init()
   }, [router])
 
   const validerConvention = async (id: number, action: 'VALIDER' | 'REJETER') => {
@@ -137,4 +144,4 @@ export default function ConventionsAdminPage() {
       </div>
     </div>
   )
-}
+} 

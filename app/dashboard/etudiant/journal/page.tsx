@@ -117,13 +117,6 @@ function couleurAvatar(nom: string) {
   return COULEURS_AVATAR[Math.abs(h) % COULEURS_AVATAR.length]
 }
 
-function statutStageBadge(statut: string): { label: string; fond: string; texte: string } {
-  if (statut === 'EN_COURS')  return { label: 'En cours',  fond: '#dbeafe', texte: '#1d4ed8' }
-  if (statut === 'TERMINE')   return { label: 'Terminé',   fond: '#f1f5f9', texte: '#64748b' }
-  if (statut === 'A_EVALUER') return { label: 'À évaluer', fond: '#fef9c3', texte: '#a16207' }
-  return { label: statut, fond: '#f1f5f9', texte: MUTED }
-}
-
 function etoiles(note: number, max=5) {
   return Array.from({ length: max }, (_, i) => (
     <svg key={i} viewBox="0 0 24 24" width={16} height={16} fill={i < note ? '#f59e0b' : 'none'}
@@ -171,7 +164,7 @@ function EvaluationCard({ stagiaire, token }: { stagiaire: Stagiaire; token: str
       })
       const data = await res.json()
       if (res.ok) {
-        setMessage(`✓ Évaluation ${evalExistante ? 'mise à jour' : 'enregistrée'}`)
+        setMessage(`✔ Évaluation ${evalExistante ? 'mise à jour' : 'enregistrée'}`)
         setEvalExistante(data.evaluation)
       } else {
         setMessage(data.message || 'Erreur lors de la sauvegarde')
@@ -244,7 +237,7 @@ function EvaluationCard({ stagiaire, token }: { stagiaire: Stagiaire; token: str
           style={{ width:'100%', padding:'10px 12px', border:'1px solid #d1d9f0', borderRadius:8, fontSize:13, color:NAVY, resize:'vertical', outline:'none', fontFamily:'inherit', boxSizing:'border-box' }}/>
       </div>
 
-      {message && <p style={{ margin:'0 0 10px', fontSize:13, fontWeight:600, color: message.startsWith('✓')?'#15803d':'#b45309' }}>{message}</p>}
+      {message && <p style={{ margin:'0 0 10px', fontSize:13, fontWeight:600, color: message.startsWith('✔')?'#15803d':'#b45309' }}>{message}</p>}
 
       <button onClick={sauvegarder} disabled={enCours}
         style={{ padding:'10px 24px', background:BLUE, color:'#fff', border:'none', borderRadius:10, fontWeight:600, fontSize:14, cursor:enCours?'not-allowed':'pointer', opacity:enCours?0.7:1 }}>
@@ -257,9 +250,9 @@ function EvaluationCard({ stagiaire, token }: { stagiaire: Stagiaire; token: str
 // ══════════════════════════════════════════════════════
 // COMPOSANT : Vue Messages
 // ══════════════════════════════════════════════════════
-function MessagesVue({ stagiaires, encadreur, token }: {
+function MessagesVue({ stagiaires, token }: {
   stagiaires: Stagiaire[]
-  encadreur: { nom: string; prenom: string } | null
+  encadreur?: { nom: string; prenom: string } | null
   token: string
 }) {
   const NAVY = '#0b2f7a', BLUE = '#1d6fe8', MUTED = '#6b7a99'
@@ -395,7 +388,7 @@ function MessagesVue({ stagiaires, encadreur, token }: {
                     <p style={{ margin:'0 0 4px' }}>{msg.contenu}</p>
                     <p style={{ margin:0, fontSize:10, opacity:0.7, textAlign:'right' }}>
                       {new Date(msg.createdAt).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' })}
-                      {estMoi && (msg.lu ? ' ✓✓' : ' ✓')}
+                      {estMoi && (msg.lu ? ' ✔✔' : ' ✔')}
                     </p>
                   </div>
                 </div>
@@ -495,7 +488,6 @@ export default function EncadreurDashboard() {
     charger()
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void chargerStagiaires()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router])
 
   const chargerJournaux = async () => {
@@ -565,22 +557,22 @@ export default function EncadreurDashboard() {
       })
       const data = await res.json()
       if (res.ok) {
-        setProfilSauvegarde('✓ Profil mis à jour avec succès')
+        setProfilSauvegarde('✔ Profil mis à jour avec succès')
         // Mettre à jour le localStorage
         const user = JSON.parse(localStorage.getItem('user') || '{}')
         localStorage.setItem('user', JSON.stringify({ ...user, nom: profilForm.nom, prenom: profilForm.prenom }))
         setEncadreur({ nom: profilForm.nom, prenom: profilForm.prenom })
       } else {
-        setProfilSauvegarde('✗ ' + (data.message || 'Erreur'))
+        setProfilSauvegarde('✘ ' + (data.message || 'Erreur'))
       }
-    } catch { setProfilSauvegarde('✗ Erreur de connexion') }
+    } catch { setProfilSauvegarde('✘ Erreur de connexion') }
     finally { setProfilEnCours(false) }
   }
 
   // Changer le mot de passe
   const changerMotDePasse = async () => {
     if (mdpForm.nouveau !== mdpForm.confirmation) {
-      setMdpSauvegarde('✗ Les mots de passe ne correspondent pas')
+      setMdpSauvegarde('✘ Les mots de passe ne correspondent pas')
       return
     }
     const token = localStorage.getItem('token')
@@ -594,12 +586,12 @@ export default function EncadreurDashboard() {
       })
       const data = await res.json()
       if (res.ok) {
-        setMdpSauvegarde('✓ Mot de passe changé avec succès')
+        setMdpSauvegarde('✔ Mot de passe changé avec succès')
         setMdpForm({ ancien:'', nouveau:'', confirmation:'' })
       } else {
-        setMdpSauvegarde('✗ ' + (data.message || 'Erreur'))
+        setMdpSauvegarde('✘ ' + (data.message || 'Erreur'))
       }
-    } catch { setMdpSauvegarde('✗ Erreur de connexion') }
+    } catch { setMdpSauvegarde('✘ Erreur de connexion') }
     finally { setMdpEnCours(false) }
   }
 
@@ -969,7 +961,7 @@ export default function EncadreurDashboard() {
                     </div>
                     {/* Infos profil */}
                     {[
-                      { icon:'school',  texte:'Licence 3 – Génie logiciel' },
+                      { icon:'school',  texte:'Licence 3 — Génie logiciel' },
                       { icon:'school',  texte:'IPD Thomas Sankara' },
                       { icon:'mapPin', texte:'Dakar, Sénégal' },
                     ].map((item, i) => (
@@ -1176,15 +1168,15 @@ export default function EncadreurDashboard() {
                         style={{ width:'100%', padding:'10px 14px', border:'1px solid #d1d9f0', borderRadius:8, fontSize:13, color:NAVY, resize:'vertical', fontFamily:'inherit', boxSizing:'border-box', outline:'none' }}/>
                       <div style={{ display:'flex', gap:10 }}>
                         <button onClick={()=>validerJournal(journalSelectionne.id,'VALIDE')} disabled={actionEnCours===journalSelectionne.id}
-                          style={{ flex:1, padding:'11px 0', background:'#15803d', color:'#fff', border:'none', borderRadius:10, fontWeight:600, fontSize:14, cursor:actionEnCours===journalSelectionne.id?'not-allowed':'pointer', opacity:actionEnCours===journalSelectionne.id?0.7:1 }}>✓ Valider le journal</button>
+                          style={{ flex:1, padding:'11px 0', background:'#15803d', color:'#fff', border:'none', borderRadius:10, fontWeight:600, fontSize:14, cursor:actionEnCours===journalSelectionne.id?'not-allowed':'pointer', opacity:actionEnCours===journalSelectionne.id?0.7:1 }}>✔ Valider le journal</button>
                         <button onClick={()=>validerJournal(journalSelectionne.id,'REJETE')} disabled={actionEnCours===journalSelectionne.id}
-                          style={{ flex:1, padding:'11px 0', background:'#fde2e2', color:'#b91c1c', border:'none', borderRadius:10, fontWeight:600, fontSize:14, cursor:actionEnCours===journalSelectionne.id?'not-allowed':'pointer', opacity:actionEnCours===journalSelectionne.id?0.7:1 }}>✕ Rejeter</button>
+                          style={{ flex:1, padding:'11px 0', background:'#fde2e2', color:'#b91c1c', border:'none', borderRadius:10, fontWeight:600, fontSize:14, cursor:actionEnCours===journalSelectionne.id?'not-allowed':'pointer', opacity:actionEnCours===journalSelectionne.id?0.7:1 }}>✘ Rejeter</button>
                       </div>
                     </div>
                   )}
                   {journalSelectionne.statut!=='EN_ATTENTE' && (
                     <div style={{ padding:'10px 16px', borderRadius:10, fontWeight:600, fontSize:14, textAlign:'center', background:journalSelectionne.statut==='VALIDE'?'#d9f5e3':'#fde2e2', color:journalSelectionne.statut==='VALIDE'?'#15803d':'#b91c1c' }}>
-                      {journalSelectionne.statut==='VALIDE'?'✓ Journal validé':'✕ Journal rejeté'}
+                      {journalSelectionne.statut==='VALIDE'?'✔ Journal validé':'✘ Journal rejeté'}
                     </div>
                   )}
                 </section>
@@ -1207,8 +1199,8 @@ export default function EncadreurDashboard() {
                             <td style={{ padding:'12px 16px' }} onClick={e=>e.stopPropagation()}>
                               {j.statut==='EN_ATTENTE'?(
                                 <div style={{ display:'flex', gap:6 }}>
-                                  <button onClick={()=>validerJournal(j.id,'VALIDE')} disabled={actionEnCours===j.id} style={{ padding:'5px 10px', background:'#d9f5e3', color:'#15803d', border:'none', borderRadius:6, fontWeight:600, fontSize:12, cursor:'pointer' }}>✓</button>
-                                  <button onClick={()=>validerJournal(j.id,'REJETE')} disabled={actionEnCours===j.id} style={{ padding:'5px 10px', background:'#fde2e2', color:'#b91c1c', border:'none', borderRadius:6, fontWeight:600, fontSize:12, cursor:'pointer' }}>✕</button>
+                                  <button onClick={()=>validerJournal(j.id,'VALIDE')} disabled={actionEnCours===j.id} style={{ padding:'5px 10px', background:'#d9f5e3', color:'#15803d', border:'none', borderRadius:6, fontWeight:600, fontSize:12, cursor:'pointer' }}>✔</button>
+                                  <button onClick={()=>validerJournal(j.id,'REJETE')} disabled={actionEnCours===j.id} style={{ padding:'5px 10px', background:'#fde2e2', color:'#b91c1c', border:'none', borderRadius:6, fontWeight:600, fontSize:12, cursor:'pointer' }}>✘</button>
                                 </div>
                               ):(
                                 <button onClick={()=>{ setJournalSelectionne(j); setCommentaireTexte('') }} style={{ padding:'5px 12px', background:'#f1f5fb', color:NAVY, border:'none', borderRadius:6, fontWeight:600, fontSize:12, cursor:'pointer' }}>Voir</button>
@@ -1267,7 +1259,13 @@ export default function EncadreurDashboard() {
                     <div style={{ position:'relative', width:96, height:96, borderRadius:'50%', overflow:'hidden', background:'linear-gradient(135deg,#1d6fe8,#0b2f7a)', flexShrink:0, cursor:'pointer' }}
                       onClick={()=>document.getElementById('avatar-input')?.click()}>
                       {(avatarPreview || avatarUrl) ? (
-                        <img src={avatarPreview || avatarUrl!} alt="avatar" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                        <Image
+                          src={avatarPreview || avatarUrl!}
+                          alt="avatar"
+                          fill
+                          sizes="96px"
+                          style={{ objectFit:'cover' }}
+                        />
                       ) : (
                         <span style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:36, fontWeight:700, color:'#fff' }}>
                           {encadreur?.prenom?.[0]?.toUpperCase()}{encadreur?.nom?.[0]?.toUpperCase()}
@@ -1328,7 +1326,7 @@ export default function EncadreurDashboard() {
                       </div>
                     ))}
                     {profilSauvegarde && (
-                      <p style={{ margin:0, fontSize:13, fontWeight:600, color: profilSauvegarde.startsWith('✓') ? '#15803d' : '#b91c1c' }}>{profilSauvegarde}</p>
+                      <p style={{ margin:0, fontSize:13, fontWeight:600, color: profilSauvegarde.startsWith('✔') ? '#15803d' : '#b91c1c' }}>{profilSauvegarde}</p>
                     )}
                     <button onClick={sauvegarderProfil} disabled={profilEnCours || avatarEnCours}
                       style={{ padding:'11px 0', background:BLUE, color:'#fff', border:'none', borderRadius:10, fontWeight:600, fontSize:14, cursor: profilEnCours ? 'not-allowed' : 'pointer', opacity: profilEnCours ? 0.7 : 1, marginTop:4 }}>
@@ -1355,7 +1353,7 @@ export default function EncadreurDashboard() {
                       </div>
                     ))}
                     {mdpSauvegarde && (
-                      <p style={{ margin:0, fontSize:13, fontWeight:600, color: mdpSauvegarde.startsWith('✓') ? '#15803d' : '#b91c1c' }}>{mdpSauvegarde}</p>
+                      <p style={{ margin:0, fontSize:13, fontWeight:600, color: mdpSauvegarde.startsWith('✔') ? '#15803d' : '#b91c1c' }}>{mdpSauvegarde}</p>
                     )}
                     <button onClick={changerMotDePasse} disabled={mdpEnCours || !mdpForm.ancien || !mdpForm.nouveau}
                       style={{ padding:'11px 0', background:NAVY, color:'#fff', border:'none', borderRadius:10, fontWeight:600, fontSize:14, cursor: mdpEnCours ? 'not-allowed' : 'pointer', opacity: mdpEnCours ? 0.7 : 1, marginTop:4 }}>

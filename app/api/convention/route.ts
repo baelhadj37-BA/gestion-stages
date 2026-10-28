@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifierToken } from "@/lib/auth";
 import { notifierUtilisateur } from "@/lib/notifications";
+import { Prisma } from "@prisma/client";
 
 function getUser(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
@@ -119,7 +120,6 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: "Convention introuvable" }, { status: 404 });
       }
 
-      // Récupère le QR Code associé s'il existe (généré à la validation finale admin)
       let qrCodeUrl: string | null = null;
       if (convention.statut === "VALIDEE") {
         const document = await prisma.document.findFirst({
@@ -134,10 +134,10 @@ export async function GET(req: NextRequest) {
 
     // 2. Consultation de la collection complète des conventions
     const statut = searchParams.get("statut");
-    const whereClause: any = {};
+    const whereClause: Prisma.ConventionWhereInput = {};
 
     if (statut && statut !== "TOUTES") {
-      whereClause.statut = statut;
+      whereClause.statut = statut as Prisma.EnumStatutConventionFilter;
     }
 
     // Contrôle d'accès selon le rôle de l'utilisateur

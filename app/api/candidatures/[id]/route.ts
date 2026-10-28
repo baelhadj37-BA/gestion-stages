@@ -7,17 +7,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifierToken } from '@/lib/auth'
 
-type Params = { params: { id: string } }
+type Params = { params: Promise<{ id: string }> }
 
 // ─── GET /api/candidatures/[id] ────────────────────────────────
 export async function GET(request: NextRequest, { params }: Params) {
   try {
+    const { id } = await params
     const token = request.headers.get('authorization')?.replace('Bearer ', '')
     const tokenData = verifierToken(token || '')
     if (!tokenData) return NextResponse.json({ message: 'Non autorisé' }, { status: 401 })
 
     const candidature = await prisma.candidature.findUnique({
-      where: { id: parseInt(params.id) },
+      where: { id: parseInt(id) },
       include: {
         offre: {
           select: {
@@ -33,10 +34,9 @@ export async function GET(request: NextRequest, { params }: Params) {
       return NextResponse.json({ message: 'Candidature introuvable' }, { status: 404 })
     }
 
-    // Contrôle d'accès
-    const estEtudiant    = tokenData.role === 'ETUDIANT' && candidature.etudiantId === tokenData.userId
-    const estEntreprise  = tokenData.role === 'ENTREPRISE' && candidature.offre.entreprise.id === tokenData.userId
-    const estAdmin       = tokenData.role === 'ADMIN'
+    const estEtudiant   = tokenData.role === 'ETUDIANT' && candidature.etudiantId === tokenData.userId
+    const estEntreprise = tokenData.role === 'ENTREPRISE' && candidature.offre.entreprise.id === tokenData.userId
+    const estAdmin      = tokenData.role === 'ADMIN'
 
     if (!estEtudiant && !estEntreprise && !estAdmin) {
       return NextResponse.json({ message: 'Accès non autorisé' }, { status: 403 })
@@ -51,15 +51,16 @@ export async function GET(request: NextRequest, { params }: Params) {
 }
 
 // ─── PATCH /api/candidatures/[id] ─────────────────────────────
-// Body : { action: 'ACCEPTER' | 'REFUSER', dateDebut?: string, dateFin?: string }
+// Body : { action: 'ACCEPTER' | 'REFUSER', dateDebut?: string, dateFin?: string, encadreurId?: number }
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
+    const { id } = await params
     const token = request.headers.get('authorization')?.replace('Bearer ', '')
     const tokenData = verifierToken(token || '')
     if (!tokenData) return NextResponse.json({ message: 'Non autorisé' }, { status: 401 })
 
     const candidature = await prisma.candidature.findUnique({
-      where: { id: parseInt(params.id) },
+      where: { id: parseInt(id) },
       include: {
         offre: {
           select: { id: true, titre: true, duree: true, entreprise: { select: { id: true } } }
@@ -71,13 +72,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       return NextResponse.json({ message: 'Candidature introuvable' }, { status: 404 })
     }
 
-    // Seule l'entreprise propriétaire de l'offre peut décider
     if (
       tokenData.role !== 'ENTREPRISE' ||
       candidature.offre.entreprise.id !== tokenData.userId
     ) {
       return NextResponse.json(
-        { message: 'Seule l\'entreprise concernée peut traiter cette candidature' },
+        { message: "Seule l'entreprise concernée peut traiter cette candidature" },
         { status: 403 }
       )
     }
@@ -89,7 +89,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       )
     }
 
-    const { action, dateDebut, dateFin } = await request.json()
+    const { action, dateDebut, dateFin, encadreurId } = await request.json()
 
     if (!['ACCEPTER', 'REFUSER'].includes(action)) {
       return NextResponse.json(
@@ -100,7 +100,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     if (action === 'REFUSER') {
       const maj = await prisma.candidature.update({
-        where: { id: parseInt(params.id) },
+        where: { id: parseInt(id) },
         data:  { statut: 'REFUSEE' }
       })
       return NextResponse.json({ message: 'Candidature refusée', candidature: maj })
@@ -110,6 +110,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (!dateDebut || !dateFin) {
       return NextResponse.json(
         { message: 'dateDebut et dateFin sont obligatoires pour accepter une candidature' },
+        { status: 400 }
+      )
+    }
+
+    if (!encadreurId) {
+      return NextResponse.json(
+        { message: 'encadreurId est obligatoire pour accepter une candidature' },
         { status: 400 }
       )
     }
@@ -127,15 +134,29 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       )
     }
 
+    // Vérifier que l'encadreur existe et est bien un ENCADREUR
+    const encadreur = await prisma.user.findUnique({
+      where: { id: parseInt(encadreurId) },
+      select: { id: true, role: true }
+    })
+
+    if (!encadreur || encadreur.role !== 'ENCADREUR') {
+      return NextResponse.json(
+        { message: 'Encadreur introuvable ou rôle invalide' },
+        { status: 400 }
+      )
+    }
+
     // Transaction : mettre à jour la candidature + créer le stage
     const [candidatureMaj, stage] = await prisma.$transaction([
       prisma.candidature.update({
-        where: { id: parseInt(params.id) },
+        where: { id: parseInt(id) },
         data:  { statut: 'ACCEPTEE' }
       }),
       prisma.stage.create({
         data: {
           etudiantId:    candidature.etudiantId,
+          encadreurId:   encadreur.id,
           candidatureId: candidature.id,
           dateDebut:     debut,
           dateFin:       fin,

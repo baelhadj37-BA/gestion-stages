@@ -99,8 +99,8 @@ model Stage {
 
   etudiant      User        @relation("EtudiantStage", fields: [etudiantId], references: [id])
   etudiantId    Int
-  encadreur     User        @relation("EncadreurStage", fields: [encadreurId], references: [id])
-  encadreurId   Int
+  encadreur     User?       @relation("EncadreurStage", fields: [encadreurId], references: [id])
+  encadreurId   Int?
   candidature   Candidature @relation(fields: [candidatureId], references: [id])
   candidatureId Int         @unique
 
@@ -165,7 +165,7 @@ model Notification {
 
 model Evaluation {
   id          Int      @id @default(autoincrement())
-  note        Int      // 1 à 5
+  note        Int
   commentaire String?  @db.Text
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
