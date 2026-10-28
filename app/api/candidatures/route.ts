@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    return NextResponse.json({ candidatures, total: candidatures.length })
+    return NextResponse.json({ data: candidatures, total: candidatures.length })
   } catch (error) {
     console.error('Erreur GET /api/candidatures:', error)
     return NextResponse.json({ message: 'Erreur serveur' }, { status: 500 })
