@@ -144,8 +144,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       // VALIDER — assigner automatiquement l'encadreur le moins chargé
       const encadreurs = await prisma.user.findMany({
         where: { role: 'ENCADREUR' },
-        include: { _count: { select: { stagesEncadres: true } } },
-        orderBy: { stagesEncadres: { _count: 'asc' } },
+        include: { _count: { select: { stagesEncadreur: true } } },
+        orderBy: { stagesEncadreur: { _count: 'asc' } },
       })
       const encadreurAuto = encadreurs[0] ?? null
 
