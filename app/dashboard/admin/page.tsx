@@ -477,6 +477,12 @@ export default function AdminDashboard() {
   const [ongletRapport, setOngletRapport] = useState<'stages' | 'alertes'>('stages')
   const [noteEdit, setNoteEdit] = useState<{ id: number; valeur: string } | null>(null)
   const [enregistrementNote, setEnregistrementNote] = useState(false)
+  const [erreurNote, setErreurNote] = useState('')
+  // ── Assignation encadreur ──
+  const [encadreursPeda, setEncadreursPeda] = useState<{ id: number; nom: string; prenom: string; email: string }[]>([])
+  const [assignModal, setAssignModal] = useState<{ stageId: number; encadreurIdActuel: number | null } | null>(null)
+  const [assignementEnCours, setAssignementEnCours] = useState(false)
+  const [encadreurChoisi, setEncadreurChoisi] = useState<number | ''>('')
   // ── Paramètres ──
   const [profilAdmin, setProfilAdmin] = useState<ProfilAdmin | null>(null)
   const [chargementParametres, setChargementParametres] = useState(false)
@@ -699,16 +705,24 @@ export default function AdminDashboard() {
     const chargerRapports = async () => {
       setChargementRapports(true)
       setErreurRapports('')
+      setErreurNote('')
+      setNoteEdit(null)
       try {
-        const res = await fetch('/api/admin/rapports', {
-          headers: { authorization: `Bearer ${token}` },
-        })
-        if (res.status === 401 || res.status === 403) { router.push('/login'); return }
-        if (!res.ok) { setErreurRapports('Impossible de charger les rapports.'); return }
-        const data = await res.json()
+        const [resRapports, resEnc] = await Promise.all([
+          fetch('/api/admin/rapports', { headers: { authorization: `Bearer ${token}` } }),
+          fetch('/api/admin/users', { headers: { authorization: `Bearer ${token}` } }),
+        ])
+        if (resRapports.status === 401 || resRapports.status === 403) { router.push('/login'); return }
+        if (!resRapports.ok) { setErreurRapports('Impossible de charger les rapports.'); return }
+        const data = await resRapports.json()
         setRapportStats(data.stats)
         setStages(data.stages || [])
         setAlertesJournaux(data.alertes || [])
+        // Charger la liste des encadreurs
+        if (resEnc.ok) {
+          const dataEnc = await resEnc.json()
+          setEncadreursPeda((dataEnc.users || []).filter((u: { role: string }) => u.role === 'ENCADREUR'))
+        }
       } catch {
         setErreurRapports('Impossible de contacter le serveur.')
       } finally {
@@ -750,9 +764,10 @@ export default function AdminDashboard() {
 
   const enregistrerNote = async () => {
     if (!noteEdit) return
+    setErreurNote('')
     const note = parseFloat(noteEdit.valeur.replace(',', '.'))
     if (isNaN(note) || note < 0 || note > 20) {
-      setErreurRapports('La note doit être un nombre entre 0 et 20.')
+      setErreurNote('La note doit être un nombre entre 0 et 20.')
       return
     }
     const token = localStorage.getItem('token')
@@ -765,7 +780,7 @@ export default function AdminDashboard() {
       })
       if (!res.ok) {
         const err = await res.json().catch(() => null)
-        setErreurRapports(err?.message || 'Impossible d\'enregistrer la note.')
+        setErreurNote(err?.message || 'Impossible d\'enregistrer la note.')
         return
       }
       setStages((prev) => prev.map((s) => s.id === noteEdit.id ? { ...s, note } : s))
@@ -776,10 +791,30 @@ export default function AdminDashboard() {
       }
       setNoteEdit(null)
     } catch {
-      setErreurRapports('Impossible de contacter le serveur.')
+      setErreurNote('Impossible de contacter le serveur.')
     } finally {
       setEnregistrementNote(false)
     }
+  }
+
+  const assignerEncadreur = async () => {
+    if (!assignModal) return
+    const token = localStorage.getItem('token')
+    setAssignementEnCours(true)
+    try {
+      const res = await fetch(`/api/admin/stages/${assignModal.stageId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ encadreurId: encadreurChoisi === '' ? null : Number(encadreurChoisi) }),
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      const encNouveau = data.stage?.encadreur ?? null
+      setStages((prev) => prev.map((s) => s.id === assignModal.stageId ? { ...s, encadreur: encNouveau } : s))
+      setAssignModal(null)
+      setEncadreurChoisi('')
+    } catch { /* silencieux */ }
+    finally { setAssignementEnCours(false) }
   }
 
   const enregistrerProfil = async () => {
@@ -2119,6 +2154,39 @@ export default function AdminDashboard() {
                   </div>
                 )}
 
+                {/* Modal assignation encadreur */}
+                {assignModal && (
+                  <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ ...CARTE, padding: 32, width: 420, maxWidth: '90vw' }}>
+                      <h2 style={{ margin: '0 0 18px', fontSize: 18, fontWeight: 800, color: NAVY }}>Assigner un encadreur pédagogique</h2>
+                      <p style={{ margin: '0 0 16px', fontSize: 13, color: MUTED }}>{'Sélectionnez l\'encadreur à affecter à ce stage :'}</p>
+                      <select
+                        value={encadreurChoisi}
+                        onChange={(e) => setEncadreurChoisi(e.target.value === '' ? '' : Number(e.target.value))}
+                        style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1.5px solid #dce5f3', fontSize: 14, color: NAVY, outline: 'none', marginBottom: 20 }}
+                      >
+                        <option value="">— Aucun encadreur —</option>
+                        {encadreursPeda.map((enc) => (
+                          <option key={enc.id} value={enc.id}>{enc.prenom} {enc.nom} ({enc.email})</option>
+                        ))}
+                      </select>
+                      {encadreursPeda.length === 0 && (
+                        <p style={{ fontSize: 12, color: '#ef4444', marginBottom: 16 }}>{'Aucun encadreur disponible. Créez-en un via "Utilisateurs".'}</p>
+                      )}
+                      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                        <button onClick={() => { setAssignModal(null); setEncadreurChoisi('') }}
+                          style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: MUTED, fontSize: 13, cursor: 'pointer' }}>
+                          Annuler
+                        </button>
+                        <button onClick={assignerEncadreur} disabled={assignementEnCours}
+                          style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: BLUE, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: assignementEnCours ? 0.7 : 1 }}>
+                          {assignementEnCours ? 'Assignation…' : 'Confirmer'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Cartes stats */}
                 {rapportStats && (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginTop: 24 }}>
@@ -2228,7 +2296,14 @@ export default function AdminDashboard() {
                                     {stage.candidature.offre.entreprise && (
                                       <div style={{ fontSize: 12, color: MUTED }}>{stage.candidature.offre.entreprise.nom} {stage.candidature.offre.entreprise.prenom}</div>
                                     )}
-                                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Enc. : {stage.encadreur?.prenom ?? '—'} {stage.encadreur?.nom ?? ''}</div>
+                                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                      <span>Enc. : {stage.encadreur ? `${stage.encadreur.prenom} ${stage.encadreur.nom}` : '—'}</span>
+                                      <button
+                                        onClick={() => { setAssignModal({ stageId: stage.id, encadreurIdActuel: stage.encadreur?.id ?? null }); setEncadreurChoisi(stage.encadreur?.id ?? '') }}
+                                        style={{ padding: '2px 8px', borderRadius: 5, border: '1px solid #dce5f3', background: '#f0f4ff', color: BLUE, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
+                                        {stage.encadreur ? 'Changer' : 'Assigner'}
+                                      </button>
+                                    </div>
                                   </td>
                                   {/* Période */}
                                   <td style={{ padding: '14px 16px', fontSize: 13, color: MUTED, whiteSpace: 'nowrap' }}>
@@ -2251,23 +2326,28 @@ export default function AdminDashboard() {
                                   {/* Note */}
                                   <td style={{ padding: '14px 16px' }}>
                                     {estEdit ? (
-                                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                        <input
-                                          type="text"
-                                          value={noteEdit.valeur}
-                                          onChange={(e) => setNoteEdit({ id: stage.id, valeur: e.target.value })}
-                                          placeholder="0–20"
-                                          style={{ width: 70, padding: '5px 8px', borderRadius: 7, border: '1px solid #1d6fe8', fontSize: 13, outline: 'none' }}
-                                          onKeyDown={(e) => { if (e.key === 'Enter') enregistrerNote() }}
-                                        />
-                                        <button onClick={enregistrerNote} disabled={enregistrementNote}
-                                          style={{ padding: '5px 10px', borderRadius: 7, border: 'none', background: '#16a34a', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                                          ✓
-                                        </button>
-                                        <button onClick={() => setNoteEdit(null)}
-                                          style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid #e2e8f0', background: '#fff', color: MUTED, fontSize: 12, cursor: 'pointer' }}>
-                                          ✕
-                                        </button>
+                                      <div>
+                                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                          <input
+                                            type="text"
+                                            value={noteEdit.valeur}
+                                            onChange={(e) => setNoteEdit({ id: stage.id, valeur: e.target.value })}
+                                            placeholder="0–20"
+                                            style={{ width: 70, padding: '5px 8px', borderRadius: 7, border: '1px solid #1d6fe8', fontSize: 13, outline: 'none' }}
+                                            onKeyDown={(e) => { if (e.key === 'Enter') enregistrerNote() }}
+                                          />
+                                          <button onClick={enregistrerNote} disabled={enregistrementNote}
+                                            style={{ padding: '5px 10px', borderRadius: 7, border: 'none', background: '#16a34a', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                                            ✓
+                                          </button>
+                                          <button onClick={() => { setNoteEdit(null); setErreurNote('') }}
+                                            style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid #e2e8f0', background: '#fff', color: MUTED, fontSize: 12, cursor: 'pointer' }}>
+                                            ✕
+                                          </button>
+                                        </div>
+                                        {erreurNote && (
+                                          <div style={{ color: '#b91c1c', fontSize: 11, marginTop: 4, maxWidth: 160 }}>{erreurNote}</div>
+                                        )}
                                       </div>
                                     ) : (
                                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
