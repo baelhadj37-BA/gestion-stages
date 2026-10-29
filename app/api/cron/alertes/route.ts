@@ -1,16 +1,10 @@
 // app/api/cron/alertes/route.ts
-// GET — Cron Job : détecte les journaux en retard et crée des alertes
-// Appelé automatiquement chaque semaine (ou manuellement depuis le dashboard admin)
-// URL : /api/cron/alertes
-
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
-// Clé secrète pour sécuriser l'appel cron (définie dans .env)
 const CRON_SECRET = process.env.CRON_SECRET || 'cron-secret-ipd-2024'
 
 export async function GET(request: NextRequest) {
-  // Vérification de la clé secrète
   const authHeader = request.headers.get('authorization')
   const cronKey = request.nextUrl.searchParams.get('key')
 
@@ -20,10 +14,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const maintenant = new Date()
-    // Seuil : journal non soumis depuis plus de 7 jours
     const seuilAlerte = new Date(maintenant.getTime() - 7 * 24 * 60 * 60 * 1000)
 
-    // Récupérer tous les stages en cours
     const stagesEnCours = await prisma.stage.findMany({
       where: { statut: 'EN_COURS' },
       include: {
@@ -31,24 +23,21 @@ export async function GET(request: NextRequest) {
         encadreur: { select: { id: true, nom: true, prenom: true } },
         journaux: {
           orderBy: { dateDepot: 'desc' },
-          take: 1, // Dernier journal soumis
+          take: 1,
         },
       },
     })
 
     let alertesCrees = 0
-    let stagesEnRetard: { etudiant: string; encadreur: string; dernierJournal: string | null }[] = []
+    const stagesEnRetard: { etudiant: string; encadreur: string; dernierJournal: string | null }[] = []
 
     for (const stage of stagesEnCours) {
       const dernierJournal = stage.journaux[0]
-
-      // Calcul du retard : pas de journal depuis 7 jours
       const estEnRetard = !dernierJournal || dernierJournal.dateDepot < seuilAlerte
 
       if (estEnRetard) {
         const dernierDepot = dernierJournal?.dateDepot?.toISOString() ?? null
 
-        // Marquer le journal comme alerte si existant
         if (dernierJournal) {
           await prisma.journalBord.update({
             where: { id: dernierJournal.id },
@@ -56,10 +45,10 @@ export async function GET(request: NextRequest) {
           })
         }
 
-        // Créer une notification pour l'encadreur
+        if (!stage.encadreurId) continue
+
         const messageEncadreur = `⚠️ Alerte : ${stage.etudiant.prenom} ${stage.etudiant.nom} n'a pas soumis de journal de bord depuis plus de 7 jours.`
 
-        // Vérifier qu'on n'a pas déjà envoyé cette alerte récemment (dans les 24h)
         const alerteExistante = await prisma.notification.findFirst({
           where: {
             userId: stage.encadreurId,
@@ -78,11 +67,14 @@ export async function GET(request: NextRequest) {
             },
           })
 
-          // Créer aussi une notification pour l'étudiant
+          const nomEncadreur = stage.encadreur
+            ? `${stage.encadreur.prenom} ${stage.encadreur.nom}`
+            : 'votre encadreur'
+
           await prisma.notification.create({
             data: {
               userId: stage.etudiantId,
-              message: `📋 Rappel : Vous n'avez pas soumis votre journal de bord cette semaine. Votre encadreur ${stage.encadreur.prenom} ${stage.encadreur.nom} attend votre rapport.`,
+              message: `📋 Rappel : Vous n'avez pas soumis votre journal de bord cette semaine. ${nomEncadreur} attend votre rapport.`,
               type: 'RAPPEL_JOURNAL',
               lu: false,
             },
@@ -93,7 +85,9 @@ export async function GET(request: NextRequest) {
 
         stagesEnRetard.push({
           etudiant: `${stage.etudiant.prenom} ${stage.etudiant.nom}`,
-          encadreur: `${stage.encadreur.prenom} ${stage.encadreur.nom}`,
+          encadreur: stage.encadreur
+            ? `${stage.encadreur.prenom} ${stage.encadreur.nom}`
+            : 'Non assigné',
           dernierJournal: dernierDepot,
         })
       }

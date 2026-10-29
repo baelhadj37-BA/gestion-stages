@@ -1131,11 +1131,9 @@ export default function EncadreurDashboard() {
                 </div>
                 <button
                   onClick={async () => {
-                    const token = localStorage.getItem('token')
                     try {
-                      const res = await fetch(`/api/cron/alertes?key=${process.env.NEXT_PUBLIC_CRON_SECRET || 'cron-secret-ipd-2024'}`, {
-                        headers: { authorization: `Bearer ${token}` }
-                      })
+                      const res = await fetch(`/api/cron/alertes?key=${process.env.NEXT_PUBLIC_CRON_SECRET || 'cron-secret-ipd-2024'}`)
+                      if (!res.ok) { alert('Erreur lors de la vérification'); return }
                       const data = await res.json()
                       alert(`✅ Vérification terminée\n${data.stagesEnRetard} stage(s) en retard\n${data.alertesCrees} alerte(s) créée(s)`)
                     } catch {

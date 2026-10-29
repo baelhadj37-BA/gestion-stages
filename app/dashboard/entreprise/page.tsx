@@ -520,12 +520,32 @@ export default function EntrepriseDashboard() {
     setConventionsChargement(true)
     setConventionsErreur('')
     try {
-      const res = await fetch('/api/convention/entreprise', {
+      const res = await fetch('/api/conventions', {
         headers: { authorization: `Bearer ${token}` },
       })
       if (!res.ok) { setConventionsErreur('Impossible de charger les conventions'); return }
       const data = await res.json()
-      setConventions(data.conventions ?? [])
+      // L'API retourne { data: convention[] } avec shape Prisma imbriquée
+      // On aplatit pour que le reste du composant continue à fonctionner
+      const raw: Array<{
+        id: number
+        statut: Convention['statut']
+        createdAt: string
+        stage: {
+          candidature: {
+            etudiant: { nom: string; prenom: string; email: string }
+            offre: { titre: string; duree: string }
+          }
+        }
+      }> = data.data ?? []
+      const conventions: Convention[] = raw.map(c => ({
+        id: c.id,
+        statut: c.statut,
+        createdAt: c.createdAt,
+        etudiant: c.stage.candidature.etudiant,
+        offre: { titre: c.stage.candidature.offre.titre, duree: c.stage.candidature.offre.duree },
+      }))
+      setConventions(conventions)
     } catch {
       setConventionsErreur('Impossible de contacter le serveur.')
     } finally {
@@ -537,7 +557,7 @@ export default function EntrepriseDashboard() {
     const token = localStorage.getItem('token')
     setSignatureEnCours(conventionId)
     try {
-      const res = await fetch(`/api/convention/${conventionId}/entreprise`, {
+      const res = await fetch(`/api/conventions/${conventionId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ action: 'SIGNER' }),

@@ -110,8 +110,9 @@ interface Convention {
     id: number
     dateDebut: string
     dateFin: string
+    encadreur: { id: number; nom: string; prenom: string; email: string } | null
+    etudiant: { id: number; nom: string; prenom: string; email: string; classe: string | null; filiere: string | null }
     candidature: {
-      etudiant: { id: number; nom: string; prenom: string; email: string; classe: string | null; filiere: string | null }
       offre: {
         titre: string
         duree: string
@@ -597,7 +598,7 @@ export default function AdminDashboard() {
           return
         }
         const data = await res.json()
-        setCandidatures(data.candidatures || [])
+        setCandidatures(data.data || [])
       } catch {
         setErreurCandidatures('Impossible de contacter le serveur.')
       } finally {
@@ -2013,6 +2014,7 @@ export default function AdminDashboard() {
                           <th style={th}>Étudiant</th>
                           <th style={th}>Offre / Entreprise</th>
                           <th style={th}>Période de stage</th>
+                          <th style={th}>Encadreur</th>
                           <th style={th}>Statut</th>
                           <th style={th}>PDF</th>
                           <th style={th}>Actions</th>
@@ -2020,7 +2022,7 @@ export default function AdminDashboard() {
                       </thead>
                       <tbody>
                         {conventionsFiltrees.map((conv, idx) => {
-                          const etudiant = conv.stage.candidature.etudiant
+                          const etudiant = conv.stage.etudiant
                           const offre = conv.stage.candidature.offre
                           const entreprise = offre.entreprise
                           const nomEtudiant = `${etudiant.prenom} ${etudiant.nom}`
@@ -2055,6 +2057,13 @@ export default function AdminDashboard() {
                                 <div>{formatDate(conv.stage.dateDebut)}</div>
                                 <div style={{ color: '#9ca3af' }}>→</div>
                                 <div>{formatDate(conv.stage.dateFin)}</div>
+                              </td>
+                              {/* Encadreur */}
+                              <td style={{ padding: '14px 16px', fontSize: 13 }}>
+                                {conv.stage.encadreur
+                                  ? <><div style={{ fontWeight: 600, color: NAVY }}>{conv.stage.encadreur.prenom} {conv.stage.encadreur.nom}</div><div style={{ fontSize: 11, color: MUTED }}>{conv.stage.encadreur.email}</div></>
+                                  : <span style={{ color: '#9ca3af' }}>—</span>
+                                }
                               </td>
                               {/* Statut */}
                               <td style={{ padding: '14px 16px' }}>

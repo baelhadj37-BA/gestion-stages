@@ -1,4 +1,4 @@
-// app/api/encadreur/evaluations/route.ts
+// app/api/entreprise/evaluations/route.ts
 // GET  — Récupérer l'évaluation d'un stagiaire
 // POST — Créer une évaluation
 // PUT  — Mettre à jour une évaluation existante
@@ -10,8 +10,8 @@ import { verifierToken } from '@/lib/auth'
 export async function GET(request: NextRequest) {
   const token = request.headers.get('authorization')?.replace('Bearer ', '')
   const tokenData = verifierToken(token || '')
-  if (!tokenData || tokenData.role !== 'ENCADREUR') {
-    return NextResponse.json({ message: 'Accès réservé aux encadreurs' }, { status: 403 })
+  if (!tokenData || tokenData.role !== 'ENTREPRISE') {
+    return NextResponse.json({ message: 'Accès réservé aux entreprises' }, { status: 403 })
   }
 
   const stagiaireId = Number(request.nextUrl.searchParams.get('stagiaireId'))
@@ -20,9 +20,14 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Trouver le stage de cet étudiant encadré par cet encadreur
+    // Trouver le stage de cet étudiant lié à l'entreprise connectée
     const stage = await prisma.stage.findFirst({
-      where: { etudiantId: stagiaireId, encadreurId: tokenData.userId },
+      where: {
+        etudiantId: stagiaireId,
+        candidature: {
+          offre: { entrepriseId: tokenData.userId }
+        }
+      },
     })
     if (!stage) {
       return NextResponse.json({ evaluation: null })
@@ -34,7 +39,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ evaluation: evaluation ?? null })
   } catch (error) {
-    console.error('Erreur GET evaluations:', error)
+    console.error('Erreur GET evaluations entreprise:', error)
     return NextResponse.json({ message: 'Erreur serveur' }, { status: 500 })
   }
 }
@@ -42,8 +47,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const token = request.headers.get('authorization')?.replace('Bearer ', '')
   const tokenData = verifierToken(token || '')
-  if (!tokenData || tokenData.role !== 'ENCADREUR') {
-    return NextResponse.json({ message: 'Accès réservé aux encadreurs' }, { status: 403 })
+  if (!tokenData || tokenData.role !== 'ENTREPRISE') {
+    return NextResponse.json({ message: 'Accès réservé aux entreprises' }, { status: 403 })
   }
 
   try {
@@ -54,13 +59,17 @@ export async function POST(request: NextRequest) {
     }
 
     const stage = await prisma.stage.findFirst({
-      where: { etudiantId: stagiaireId, encadreurId: tokenData.userId },
+      where: {
+        etudiantId: stagiaireId,
+        candidature: {
+          offre: { entrepriseId: tokenData.userId }
+        }
+      },
     })
     if (!stage) {
       return NextResponse.json({ message: 'Stage introuvable' }, { status: 404 })
     }
 
-    // Vérifier si une évaluation existe déjà
     const existante = await prisma.evaluation.findFirst({ where: { stageId: stage.id } })
     if (existante) {
       return NextResponse.json({ message: 'Évaluation déjà existante, utilisez PUT' }, { status: 409 })
@@ -72,7 +81,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ message: 'Évaluation créée', evaluation }, { status: 201 })
   } catch (error) {
-    console.error('Erreur POST evaluations:', error)
+    console.error('Erreur POST evaluations entreprise:', error)
     return NextResponse.json({ message: 'Erreur serveur' }, { status: 500 })
   }
 }
@@ -80,8 +89,8 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const token = request.headers.get('authorization')?.replace('Bearer ', '')
   const tokenData = verifierToken(token || '')
-  if (!tokenData || tokenData.role !== 'ENCADREUR') {
-    return NextResponse.json({ message: 'Accès réservé aux encadreurs' }, { status: 403 })
+  if (!tokenData || tokenData.role !== 'ENTREPRISE') {
+    return NextResponse.json({ message: 'Accès réservé aux entreprises' }, { status: 403 })
   }
 
   try {
@@ -92,7 +101,12 @@ export async function PUT(request: NextRequest) {
     }
 
     const stage = await prisma.stage.findFirst({
-      where: { etudiantId: stagiaireId, encadreurId: tokenData.userId },
+      where: {
+        etudiantId: stagiaireId,
+        candidature: {
+          offre: { entrepriseId: tokenData.userId }
+        }
+      },
     })
     if (!stage) {
       return NextResponse.json({ message: 'Stage introuvable' }, { status: 404 })
@@ -110,7 +124,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ message: 'Évaluation mise à jour', evaluation })
   } catch (error) {
-    console.error('Erreur PUT evaluations:', error)
+    console.error('Erreur PUT evaluations entreprise:', error)
     return NextResponse.json({ message: 'Erreur serveur' }, { status: 500 })
   }
 }

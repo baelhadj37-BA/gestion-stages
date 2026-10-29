@@ -83,7 +83,21 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
     const convention = await prisma.convention.findUnique({
       where: { id },
-      include: { stage: { include: { candidature: { include: { offre: true } } } } },
+      include: {
+        stage: {
+          include: {
+            candidature: {
+              include: {
+                offre: {
+                  include: {
+                    entreprise: { select: { id: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     })
     if (!convention) {
       return NextResponse.json({ message: 'Convention introuvable' }, { status: 404 })
@@ -92,7 +106,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     // ── SIGNER (étudiant ou entreprise) ──
     if (action === 'SIGNER') {
       const etudiantId   = convention.stage.candidature.etudiantId
-      const entrepriseId = convention.stage.candidature.offre.entrepriseId
+      // entrepriseId peut être l'id du User OU l'id du profil Entreprise selon le schéma
+      // On compare avec les deux pour être sûr
+      const entrepriseUserId  = convention.stage.candidature.offre.entrepriseId
+      const entrepriseProfilId = convention.stage.candidature.offre.entreprise?.id ?? null
+
       if (utilisateur.role === 'ETUDIANT' && utilisateur.userId === etudiantId) {
         if (convention.statut !== 'ETAPE_ETUDIANT') {
           return NextResponse.json({ message: "Ce n'est pas votre étape" }, { status: 400 })
@@ -103,7 +121,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         })
         return NextResponse.json({ message: "Convention transmise à l'entreprise", data: conventionMaj })
       }
-      if (utilisateur.role === 'ENTREPRISE' && utilisateur.userId === entrepriseId) {
+      if (
+        utilisateur.role === 'ENTREPRISE' &&
+        (utilisateur.userId === entrepriseUserId || utilisateur.userId === entrepriseProfilId)
+      ) {
         if (convention.statut !== 'ETAPE_ENTREPRISE') {
           return NextResponse.json({ message: "Ce n'est pas votre étape" }, { status: 400 })
         }
@@ -113,7 +134,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         })
         return NextResponse.json({ message: "Convention transmise à l'admin", data: conventionMaj })
       }
-      return NextResponse.json({ message: 'Action non autorisée' }, { status: 403 })
+      return NextResponse.json({ message: 'Action non autorisée', debug: { userId: utilisateur.userId, entrepriseUserId, entrepriseProfilId, statut: convention.statut } }, { status: 403 })
     }
 
     // ── VALIDER ou REJETER (admin) ──

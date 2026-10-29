@@ -1,6 +1,4 @@
 // app/dashboard/etudiant/conventions/[id]/page.tsx
-// Page détail d'une convention — vue Étudiant
-
 'use client'
 
 import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
@@ -74,18 +72,14 @@ function statutLabel(s: StatutDB): string {
     case 'REJETEE':          return 'Rejetée'
   }
 }
+
 function statutCouleur(s: StatutDB): { bg: string; color: string; border: string } {
   switch (s) {
-    case 'ETAPE_ETUDIANT':
-      return { bg: '#fef3c7', color: '#d97706', border: '#fcd34d' }
-    case 'ETAPE_ENTREPRISE':
-      return { bg: '#dbeafe', color: '#1d4ed8', border: '#93c5fd' }
-    case 'ETAPE_ADMIN':
-      return { bg: '#e0e7ff', color: '#4338ca', border: '#a5b4fc' }
-    case 'VALIDEE':
-      return { bg: '#dcfce7', color: '#15803d', border: '#86efac' }
-    case 'REJETEE':
-      return { bg: '#fee2e2', color: '#dc2626', border: '#fca5a5' }
+    case 'ETAPE_ETUDIANT':   return { bg: '#fef3c7', color: '#d97706', border: '#fcd34d' }
+    case 'ETAPE_ENTREPRISE': return { bg: '#dbeafe', color: '#1d4ed8', border: '#93c5fd' }
+    case 'ETAPE_ADMIN':      return { bg: '#e0e7ff', color: '#4338ca', border: '#a5b4fc' }
+    case 'VALIDEE':          return { bg: '#dcfce7', color: '#15803d', border: '#86efac' }
+    case 'REJETEE':          return { bg: '#fee2e2', color: '#dc2626', border: '#fca5a5' }
   }
 }
 
@@ -137,7 +131,7 @@ export default function ConventionDetailPage() {
         throw new Error(data.message || 'Erreur')
       }
       const data = await res.json()
-      setConvention(data.convention)
+      setConvention(data.data)   // ✅ corrigé : data.data
     } catch (e: unknown) {
       setErreur(e instanceof Error ? e.message : 'Erreur lors du chargement')
     } finally {
@@ -169,6 +163,7 @@ export default function ConventionDetailPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${tok}`,
         },
+        body: JSON.stringify({ action: 'SIGNER' }),  // ✅ corrigé : body avec action
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || 'Erreur')
@@ -261,8 +256,8 @@ export default function ConventionDetailPage() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center' }}>
               {ETAPES.map((etape, i) => {
-                const done    = i < idx
-                const current = i === idx
+                const done      = i < idx
+                const current   = i === idx
                 const bgCircle  = done || current ? BLUE : '#e2e8f0'
                 const colorText = done ? BLUE : current ? NAVY : MUTED
                 const lineColor = done ? BLUE : '#e2e8f0'
@@ -346,9 +341,9 @@ export default function ConventionDetailPage() {
             } />
             {entreprise ? (
               <>
-                <InfoLigne label="Nom"    value={`${entreprise.prenom} ${entreprise.nom}`} />
+                <InfoLigne label="Nom"     value={`${entreprise.prenom} ${entreprise.nom}`} />
                 <InfoLigne label="Secteur" value={entreprise.secteur || '—'} />
-                <InfoLigne label="Email"  value={entreprise.email} />
+                <InfoLigne label="Email"   value={entreprise.email} />
               </>
             ) : (
               <div style={{ color: MUTED, fontSize: 14 }}>Informations non disponibles</div>
@@ -365,7 +360,7 @@ export default function ConventionDetailPage() {
                 <polyline points="14 2 14 8 20 8" stroke={BLUE} strokeWidth="1.8"/>
               </svg>
             } />
-            <InfoLigne label="Créée le"         value={fmtDateCourt(convention.createdAt)} />
+            <InfoLigne label="Créée le"          value={fmtDateCourt(convention.createdAt)} />
             <InfoLigne label="Date de validation"
               value={convention.dateValidation ? fmtDateCourt(convention.dateValidation) : '—'} />
             <InfoLigne label="PDF"
@@ -384,8 +379,7 @@ export default function ConventionDetailPage() {
             } />
             {stage.encadreur ? (
               <>
-                <InfoLigne label="Nom"
-                  value={`${stage.encadreur.prenom} ${stage.encadreur.nom}`} />
+                <InfoLigne label="Nom"   value={`${stage.encadreur.prenom} ${stage.encadreur.nom}`} />
                 <InfoLigne label="Email" value={stage.encadreur.email} />
               </>
             ) : (
@@ -401,7 +395,7 @@ export default function ConventionDetailPage() {
           <div style={{ background: WHITE, borderRadius: 12, padding: '28px 32px',
             boxShadow: '0 1px 4px rgba(0,0,0,0.08)', border: `2px solid ${BLUE}` }}>
             <div style={{ fontWeight: 700, color: NAVY, fontSize: 17, marginBottom: 8 }}>
-              ✏️ Signer votre convention de stage
+              ✍️ Signer votre convention de stage
             </div>
             <p style={{ color: MUTED, fontSize: 14, margin: '0 0 20px', lineHeight: 1.6 }}>
               En cliquant sur &laquo;&nbsp;Signer&nbsp;&raquo;, vous confirmez avoir pris
