@@ -38,10 +38,35 @@ interface Candidature {
 interface Notification {
   id: number; message: string; type: string; lu: boolean; createdAt: string
 }
+interface ConventionDetail {
+  id: number
+  statut: string
+  pdfUrl: string | null
+  motifRejet: string | null
+  dateValidation: string | null
+  createdAt: string
+  stage?: {
+    id?: number
+    dateDebut?: string
+    dateFin?: string
+    etudiant?: { nom: string; prenom: string; email: string }
+    encadreur?: { id: number; nom: string; prenom: string; email: string } | null
+    candidature?: {
+      offre?: {
+        titre?: string
+        duree?: string
+        localisation?: string
+        entreprise?: { nom?: string; prenom?: string; secteur?: string | null; email?: string | null }
+      }
+    }
+  }
+}
+
 interface Convention {
   id: number
   statut: string
   stage?: {
+    id?: number
     candidature?: {
       offre?: {
         titre?: string
@@ -118,6 +143,10 @@ export default function DashboardEtudiant() {
   const [chgtOffres,     setChgtOffres]     = useState(false)
   const [chgtCandid,     setChgtCandid]     = useState(false)
   const [chgtConvention, setChgtConvention] = useState(false)
+  const [convDetail, setConvDetail] = useState<ConventionDetail | null>(null)
+  const [chgtConvDetail, setChgtConvDetail] = useState(false)
+  const [signerEnCours, setSignerEnCours] = useState(false)
+  const [msgSigner, setMsgSigner] = useState('')
 
   const [filtreOffre,       setFiltreOffre]       = useState('')
   const [filtreScore,       setFiltreScore]       = useState<'tous'|'excellent'|'moyen'|'faible'>('tous')
@@ -829,20 +858,338 @@ export default function DashboardEtudiant() {
     </>
   )
 
-  // ── CONVENTION DE STAGE ───────────────────────────────────
-  const renderConvention = () => {
-    const statutColors: Record<string, { color: string; bg: string; label: string }> = {
-      ETAPE_ETUDIANT:   { color: '#d97706', bg: '#fef3c7', label: '✍️ À signer par vous' },
-      ETAPE_ENTREPRISE: { color: '#7c3aed', bg: '#f3e8ff', label: '⏳ En attente entreprise' },
-      ETAPE_ADMIN:      { color: '#1d6fe8', bg: '#e8f0fe', label: '🔍 En attente admin' },
-      VALIDEE:          { color: '#15803d', bg: '#dcfce7', label: '✅ Validée' },
-      REJETEE:          { color: '#dc2626', bg: '#fee2e2', label: '❌ Rejetée' },
-    }
+  // ── JOURNAL DE BORD ──────────────────────────────────────
+  const renderJournal = () => {
+    const convValidee = conventions.find(c => c.statut === 'VALIDEE')
+    const stageId = convValidee?.stage?.id
     return (
       <>
         {topbar}
+        <div style={{ padding: '24px' }}>
+          <h2 style={{ margin: '0 0 20px', fontSize: 22, fontWeight: 800, color: NAVY }}>Journal de bord</h2>
+          {!stageId
+            ? <div style={{ ...cardSt, textAlign: 'center', padding: 60, color: MUTED }}>📓 Ce module s&apos;active une fois votre stage démarré.</div>
+            : <JournalVue stageId={stageId} token={localStorage.getItem('token') ?? ''} />
+          }
+        </div>
+      </>
+    )
+  }
+
+  // ── CONVENTION DE STAGE ───────────────────────────────────
+  const chargerConvDetail = async (id: number) => {
+    setChgtConvDetail(true)
+    setMsgSigner('')
+    try {
+      const tok = tokenRef.current
+      const r = await fetch(`/api/conventions/${id}`, { headers: { Authorization: `Bearer ${tok}` } })
+      const d = await r.json()
+      if (r.ok) setConvDetail(d.data)
+    } finally { setChgtConvDetail(false) }
+  }
+
+  const signerConvention = async () => {
+    if (!convDetail) return
+    setSignerEnCours(true); setMsgSigner('')
+    try {
+      const tok = tokenRef.current
+      const r = await fetch(`/api/conventions/${convDetail.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({ action: 'SIGNER' }),
+      })
+      const d = await r.json()
+      if (r.ok) {
+        setMsgSigner('Convention signée avec succès !')
+        await chargerConvDetail(convDetail.id)
+        await loadConventions(tok)
+      } else {
+        setMsgSigner(d.message || 'Erreur lors de la signature')
+      }
+    } finally { setSignerEnCours(false) }
+  }
+
+  const renderConvention = () => {
+    const ETAPES = [
+      { key: 'ETAPE_ETUDIANT',   label: 'Signature étudiant',   sub: 'Votre signature en cours' },
+      { key: 'ETAPE_ENTREPRISE', label: 'Signature entreprise',  sub: "En attente de l'entreprise" },
+      { key: 'ETAPE_ADMIN',      label: 'Validation admin',      sub: "Validation par l'établissement" },
+      { key: 'VALIDEE',          label: 'Convention active',     sub: 'Téléchargement du document' },
+    ]
+    const ORDRE = ['ETAPE_ETUDIANT','ETAPE_ENTREPRISE','ETAPE_ADMIN','VALIDEE']
+    const statutColors: Record<string, { color: string; bg: string; label: string }> = {
+      ETAPE_ETUDIANT:   { color: '#d97706', bg: '#fef3c7', label: 'En attente de votre signature' },
+      ETAPE_ENTREPRISE: { color: '#7c3aed', bg: '#f3e8ff', label: 'En attente entreprise' },
+      ETAPE_ADMIN:      { color: '#1d6fe8', bg: '#e8f0fe', label: 'En attente admin' },
+      VALIDEE:          { color: '#15803d', bg: '#dcfce7', label: 'Convention validée' },
+      REJETEE:          { color: '#dc2626', bg: '#fee2e2', label: 'Convention rejetée' },
+    }
+
+    // Vue détail convention
+    if (convDetail) {
+      const st = statutColors[convDetail.statut] ?? { color: MUTED, bg: '#f4f7fc', label: convDetail.statut }
+      const _etapeIdx = ORDRE.indexOf(convDetail.statut === 'REJETEE' ? 'REJETEE' : convDetail.statut)
+      const avancement = convDetail.statut === 'VALIDEE' ? 100 : convDetail.statut === 'ETAPE_ADMIN' ? 75 : convDetail.statut === 'ETAPE_ENTREPRISE' ? 50 : convDetail.statut === 'REJETEE' ? 0 : 25
+      const offre = convDetail.stage?.candidature?.offre
+      const entreprise = offre?.entreprise
+      const encadreur = convDetail.stage?.encadreur
+
+      return (
+        <>
+          {topbar}
+          {/* Bandeau hero convention */}
+          <div style={{ margin: '0', background: 'linear-gradient(135deg, #0b2f7a 0%, #1d6fe8 100%)', padding: '22px 28px', display: 'flex', alignItems: 'center', gap: 18, position: 'relative', overflow: 'hidden' }}>
+            <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="26" height="26" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke={WHITE} strokeWidth="2"/><polyline points="14,2 14,8 20,8" stroke={WHITE} strokeWidth="2"/><path d="M9 14l2 2 4-4" stroke={WHITE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </div>
+            <div>
+              <button onClick={() => { setConvDetail(null); setMsgSigner('') }} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: WHITE, borderRadius: 7, padding: '4px 12px', fontSize: 12, cursor: 'pointer', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                Retour
+              </button>
+              <div style={{ fontSize: 20, fontWeight: 800, color: WHITE }}>{offre?.titre ?? 'Convention de stage'}</div>
+            </div>
+            <span style={{ marginLeft: 'auto', background: st.bg, color: st.color, padding: '6px 16px', borderRadius: 20, fontSize: 13, fontWeight: 700, flexShrink: 0 }}>{st.label}</span>
+            {/* Décoratif */}
+            <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 200, background: 'rgba(255,255,255,0.04)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ fontFamily: "'Segoe Script','Brush Script MT',cursive", fontSize: 15, color: 'rgba(255,255,255,0.25)', transform: 'rotate(-8deg)', textAlign: 'center', lineHeight: 1.6 }}>Une étape importante<br />vers votre avenir professionnel !</div>
+            </div>
+          </div>
+
+          <div style={{ padding: '24px 24px 40px' }}>
+            {chgtConvDetail
+              ? <div style={{ ...cardSt, textAlign: 'center', padding: 60, color: MUTED }}>Chargement...</div>
+              : (
+              <>
+                {/* Progression */}
+                <div style={{ ...cardSt, marginBottom: 20, padding: '20px 28px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
+                    {/* Ligne de fond */}
+                    <div style={{ position: 'absolute', top: 16, left: 20, right: 20, height: 3, background: '#eef2fa', zIndex: 0 }} />
+                    <div style={{ position: 'absolute', top: 16, left: 20, height: 3, width: `${avancement}%`, background: '#1d6fe8', zIndex: 1, transition: 'width 0.5s ease', borderRadius: 2 }} />
+                    {ETAPES.map((e, i) => {
+                      const done = ORDRE.indexOf(convDetail.statut) > i || convDetail.statut === 'VALIDEE'
+                      const active = ORDRE.indexOf(convDetail.statut) === i
+                      return (
+                        <div key={e.key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, zIndex: 2, flex: 1 }}>
+                          <div style={{ width: 34, height: 34, borderRadius: '50%', background: done || active ? BLUE : '#eef2fa', border: `3px solid ${done || active ? BLUE : '#d1dae8'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: done || active ? WHITE : MUTED, fontWeight: 700, fontSize: 13, transition: 'all 0.3s' }}>
+                            {done ? <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg> : i + 1}
+                          </div>
+                          <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: 12, fontWeight: done || active ? 700 : 400, color: done || active ? NAVY : MUTED }}>{e.label}</div>
+                            {active && <div style={{ fontSize: 11, color: BLUE, marginTop: 2 }}>{e.sub}</div>}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Corps principal : 3 colonnes */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 300px', gap: 18 }}>
+                  {/* Col 1 : Document PDF */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <div style={{ ...cardSt }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 8, background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke={BLUE} strokeWidth="2"/><polyline points="14,2 14,8 20,8" stroke={BLUE} strokeWidth="2"/></svg>
+                        </div>
+                        <span style={{ fontWeight: 700, fontSize: 14, color: NAVY }}>Document de convention</span>
+                      </div>
+                      {/* Preview PDF simulé */}
+                      <div style={{ background: '#f8fafd', border: '1px solid #eef2fa', borderRadius: 12, padding: '30px 20px', textAlign: 'center', minHeight: 220, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14 }}>
+                        <div style={{ width: 60, height: 70, background: WHITE, border: '2px solid #eef2fa', borderRadius: 6, boxShadow: '0 4px 16px rgba(30,70,150,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                          <svg width="28" height="28" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="#dc2626" strokeWidth="2"/><polyline points="14,2 14,8 20,8" stroke="#dc2626" strokeWidth="2"/><line x1="8" y1="13" x2="16" y2="13" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round"/><line x1="8" y1="17" x2="12" y2="17" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                          <span style={{ position: 'absolute', bottom: -1, right: -1, background: '#dc2626', color: WHITE, fontSize: 7, fontWeight: 800, padding: '1px 4px', borderRadius: 3 }}>PDF</span>
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 14, color: NAVY, marginBottom: 4 }}>Convention de stage</div>
+                          <div style={{ fontSize: 12, color: MUTED }}>Entre l&apos;entreprise et l&apos;étudiant</div>
+                        </div>
+                        {convDetail.pdfUrl
+                          ? <a href={convDetail.pdfUrl} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#e8f0fe', color: BLUE, borderRadius: 9, padding: '8px 16px', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
+                              <svg width="15" height="15" fill="none" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                              Télécharger le PDF
+                            </a>
+                          : <div style={{ fontSize: 12, color: MUTED, background: '#f4f7fc', borderRadius: 8, padding: '6px 14px' }}>PDF non encore généré</div>
+                        }
+                      </div>
+                    </div>
+
+                    {/* Signer la convention */}
+                    {convDetail.statut === 'ETAPE_ETUDIANT' && (
+                      <div style={{ ...cardSt, border: '2px solid #1d6fe8', padding: '20px 22px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                          <span style={{ fontSize: 20 }}>✍️</span>
+                          <span style={{ fontWeight: 700, fontSize: 15, color: NAVY }}>Signer votre convention de stage</span>
+                        </div>
+                        <p style={{ margin: '0 0 16px', fontSize: 13, color: MUTED, lineHeight: 1.6 }}>
+                          En cliquant sur « Signer », vous confirmez avoir pris connaissance des termes de votre convention et vous engagez à respecter les conditions définies. Elle sera ensuite transmise à l&apos;entreprise pour signature.
+                        </p>
+                        {msgSigner && (
+                          <div style={{ padding: '9px 14px', borderRadius: 8, marginBottom: 14, fontSize: 13, fontWeight: 600, background: msgSigner.includes('succès') ? '#dcfce7' : '#fee2e2', color: msgSigner.includes('succès') ? '#15803d' : '#dc2626' }}>
+                            {msgSigner}
+                          </div>
+                        )}
+                        <button onClick={signerConvention} disabled={signerEnCours} style={{ width: '100%', background: BLUE, color: WHITE, border: 'none', borderRadius: 10, padding: '13px 0', fontSize: 14, fontWeight: 700, cursor: signerEnCours ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: signerEnCours ? 0.7 : 1 }}>
+                          <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                          {signerEnCours ? 'Signature en cours...' : 'Signer la convention'}
+                        </button>
+                      </div>
+                    )}
+
+                    {convDetail.statut === 'REJETEE' && convDetail.motifRejet && (
+                      <div style={{ ...cardSt, background: '#fff5f5', border: '1px solid #fecaca' }}>
+                        <div style={{ fontWeight: 700, color: '#dc2626', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/><line x1="15" y1="9" x2="9" y2="15" stroke="currentColor" strokeWidth="2"/><line x1="9" y1="9" x2="15" y2="15" stroke="currentColor" strokeWidth="2"/></svg>
+                          Motif de rejet
+                        </div>
+                        <p style={{ margin: 0, fontSize: 13, color: '#7f1d1d' }}>{convDetail.motifRejet}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Col 2 : Détails */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <div style={{ ...cardSt }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 8, background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke={BLUE} strokeWidth="2"/><line x1="12" y1="8" x2="12" y2="12" stroke={BLUE} strokeWidth="2"/><line x1="12" y1="16" x2="12.01" y2="16" stroke={BLUE} strokeWidth="2.5" strokeLinecap="round"/></svg>
+                        </div>
+                        <span style={{ fontWeight: 700, fontSize: 14, color: NAVY }}>Détails de la convention</span>
+                      </div>
+                      {[
+                        { icon: '🏢', label: 'Entreprise', val: entreprise?.nom ?? '—' },
+                        { icon: '💼', label: 'Offre de stage', val: offre?.titre ?? '—' },
+                        { icon: '📍', label: 'Localisation', val: offre?.localisation ?? '—' },
+                        { icon: '⏱️', label: 'Durée', val: offre?.duree ?? '—' },
+                        { icon: '📅', label: 'Début', val: convDetail.stage?.dateDebut ? new Date(convDetail.stage.dateDebut).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }) : '—' },
+                        { icon: '📅', label: 'Fin', val: convDetail.stage?.dateFin ? new Date(convDetail.stage.dateFin).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }) : '—' },
+                        { icon: '✉️', label: 'Email entreprise', val: entreprise?.email ?? '—' },
+                        { icon: '🏭', label: 'Secteur', val: entreprise?.secteur ?? '—' },
+                      ].map(row => (
+                        <div key={row.label} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 0', borderBottom: '1px solid #f4f7fc' }}>
+                          <span style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>{row.icon}</span>
+                          <span style={{ fontSize: 12, color: MUTED, width: 120, flexShrink: 0, paddingTop: 1 }}>{row.label}</span>
+                          <span style={{ fontSize: 13, color: NAVY, fontWeight: 600, flex: 1 }}>{row.val}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Col 3 : Avancement + Documents */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    {/* Avancement */}
+                    <div style={{ ...cardSt }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 8, background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke={BLUE} strokeWidth="2"/><path d="M12 6v6l4 2" stroke={BLUE} strokeWidth="2" strokeLinecap="round"/></svg>
+                        </div>
+                        <span style={{ fontWeight: 700, fontSize: 14, color: NAVY }}>Avancement</span>
+                      </div>
+                      {/* Cercle avancement */}
+                      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 18 }}>
+                        <div style={{ position: 'relative', width: 90, height: 90 }}>
+                          <svg width="90" height="90" viewBox="0 0 90 90">
+                            <circle cx="45" cy="45" r="38" fill="none" stroke="#eef2fa" strokeWidth="8"/>
+                            <circle cx="45" cy="45" r="38" fill="none" stroke={BLUE} strokeWidth="8"
+                              strokeDasharray={`${2 * Math.PI * 38}`}
+                              strokeDashoffset={`${2 * Math.PI * 38 * (1 - avancement / 100)}`}
+                              strokeLinecap="round"
+                              transform="rotate(-90 45 45)"
+                            />
+                          </svg>
+                          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                            <span style={{ fontSize: 20, fontWeight: 800, color: NAVY }}>{avancement}%</span>
+                          </div>
+                        </div>
+                      </div>
+                      {/* Étapes */}
+                      {[
+                        { label: 'Convention générée', done: true },
+                        { label: 'Signature étudiant', done: ['ETAPE_ENTREPRISE','ETAPE_ADMIN','VALIDEE'].includes(convDetail.statut), active: convDetail.statut === 'ETAPE_ETUDIANT' },
+                        { label: 'Signature entreprise', done: ['ETAPE_ADMIN','VALIDEE'].includes(convDetail.statut), active: convDetail.statut === 'ETAPE_ENTREPRISE' },
+                        { label: 'Validation admin', done: convDetail.statut === 'VALIDEE', active: convDetail.statut === 'ETAPE_ADMIN' },
+                        { label: 'Convention active', done: convDetail.statut === 'VALIDEE' },
+                      ].map(step => (
+                        <div key={step.label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0' }}>
+                          <div style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, background: step.done ? '#dcfce7' : step.active ? '#e8f0fe' : '#f4f7fc', border: `2px solid ${step.done ? '#15803d' : step.active ? BLUE : '#d1dae8'}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {step.done
+                              ? <svg width="11" height="11" fill="none" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="#15803d" strokeWidth="2.5" strokeLinecap="round"/></svg>
+                              : step.active
+                                ? <div style={{ width: 8, height: 8, borderRadius: '50%', background: BLUE }} />
+                                : null
+                            }
+                          </div>
+                          <span style={{ fontSize: 12, color: step.done ? '#15803d' : step.active ? NAVY : MUTED, fontWeight: step.active || step.done ? 600 : 400 }}>{step.label}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Encadreur */}
+                    <div style={{ ...cardSt }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 8, background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke={BLUE} strokeWidth="2"/><circle cx="12" cy="7" r="4" stroke={BLUE} strokeWidth="2"/></svg>
+                        </div>
+                        <span style={{ fontWeight: 700, fontSize: 14, color: NAVY }}>Encadreur pédagogique</span>
+                      </div>
+                      {encadreur
+                        ? <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <div style={{ width: 40, height: 40, borderRadius: '50%', background: BLUE, display: 'flex', alignItems: 'center', justifyContent: 'center', color: WHITE, fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
+                              {initiales(encadreur.nom, encadreur.prenom)}
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: 13, color: NAVY }}>{encadreur.prenom} {encadreur.nom}</div>
+                              <div style={{ fontSize: 12, color: MUTED }}>{encadreur.email}</div>
+                            </div>
+                          </div>
+                        : <div style={{ fontSize: 13, color: MUTED, fontStyle: 'italic' }}>Aucun encadreur assigné pour l&apos;instant</div>
+                      }
+                    </div>
+
+                    {/* Besoin d'aide */}
+                    <div style={{ ...cardSt, background: '#f8fafd', border: '1px solid #e8f0fe' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                        <div style={{ width: 26, height: 26, borderRadius: '50%', background: BLUE, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <span style={{ color: WHITE, fontSize: 13, fontWeight: 800 }}>i</span>
+                        </div>
+                        <span style={{ fontWeight: 700, fontSize: 13, color: NAVY }}>Besoin d&apos;aide ?</span>
+                      </div>
+                      <p style={{ margin: '0 0 12px', fontSize: 12, color: MUTED, lineHeight: 1.5 }}>En cas de problème, contactez votre encadreur ou le service des stages de l&apos;IPD.</p>
+                      <button onClick={() => nav('profil')} style={{ width: '100%', background: 'none', border: `1px solid ${BLUE}`, color: BLUE, borderRadius: 8, padding: '8px 0', fontSize: 12, cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" stroke="currentColor" strokeWidth="2"/><polyline points="22,6 12,13 2,6" stroke="currentColor" strokeWidth="2"/></svg>
+                        Contacter le service des stages
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+        </div>
+        </>
+      )
+    }
+
+    // Vue liste conventions
+    return (
+      <>
+        {topbar}
+        {/* Hero banner */}
+        <div style={{ margin: '0', background: 'linear-gradient(135deg, #0b2f7a 0%, #1d6fe8 100%)', padding: '22px 28px', display: 'flex', alignItems: 'center', gap: 18, position: 'relative', overflow: 'hidden' }}>
+          <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="26" height="26" fill="none" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4" stroke={WHITE} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" stroke={WHITE} strokeWidth="2" strokeLinecap="round"/></svg>
+          </div>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: WHITE }}>Convention de stage</div>
+            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', marginTop: 3 }}>Consultez, validez et signez votre convention de stage en ligne.</div>
+          </div>
+          <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ fontFamily: "'Segoe Script','Brush Script MT',cursive", fontSize: 15, color: 'rgba(255,255,255,0.25)', transform: 'rotate(-8deg)', textAlign: 'center', lineHeight: 1.6 }}>Une étape importante<br />vers votre avenir professionnel !</div>
+          </div>
+        </div>
+
         <div style={{ padding: '24px 24px 40px' }}>
-          <h2 style={{ margin: '0 0 20px', fontSize: 22, fontWeight: 800, color: NAVY }}>Convention de stage</h2>
           {chgtConvention
             ? <div style={{ ...cardSt, textAlign: 'center', padding: 60, color: MUTED }}>Chargement...</div>
             : conventions.length === 0
@@ -856,6 +1203,9 @@ export default function DashboardEtudiant() {
                     const st = statutColors[conv.statut] ?? { color: MUTED, bg: '#f4f7fc', label: conv.statut }
                     return (
                       <div key={conv.id} style={{ ...cardSt, display: 'flex', alignItems: 'center', gap: 18 }}>
+                        <div style={{ width: 46, height: 46, borderRadius: 12, background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke={BLUE} strokeWidth="2"/><polyline points="14,2 14,8 20,8" stroke={BLUE} strokeWidth="2"/></svg>
+                        </div>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 700, fontSize: 15, color: NAVY, marginBottom: 4 }}>
                             {conv.stage?.candidature?.offre?.titre ?? 'Convention de stage'}
@@ -867,17 +1217,11 @@ export default function DashboardEtudiant() {
                         <span style={{ background: st.bg, color: st.color, padding: '5px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
                           {st.label}
                         </span>
-                        {conv.statut === 'ETAPE_ETUDIANT' ? (
-                          <a href={`/dashboard/etudiant/conventions/${conv.id}`}
-                            style={{ background: NAVY, color: WHITE, borderRadius: 9, padding: '8px 18px', fontSize: 13, fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}>
-                            Signer
-                          </a>
-                        ) : (
-                          <a href={`/dashboard/etudiant/conventions/${conv.id}`}
-                            style={{ background: 'none', border: '1px solid #eef2fa', color: NAVY, borderRadius: 9, padding: '8px 18px', fontSize: 13, fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}>
-                            Voir
-                          </a>
-                        )}
+                        <button
+                          onClick={() => { chargerConvDetail(conv.id) }}
+                          style={{ background: conv.statut === 'ETAPE_ETUDIANT' ? NAVY : 'none', border: conv.statut === 'ETAPE_ETUDIANT' ? 'none' : '1px solid #eef2fa', color: conv.statut === 'ETAPE_ETUDIANT' ? WHITE : NAVY, borderRadius: 9, padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+                          {conv.statut === 'ETAPE_ETUDIANT' ? 'Signer' : 'Voir'}
+                        </button>
                       </div>
                     )
                   })}
@@ -1085,11 +1429,103 @@ export default function DashboardEtudiant() {
         {vue === 'offres'          && renderOffres()}
         {vue === 'candidatures'    && renderCandidatures()}
         {vue === 'notifications'   && renderNotifications()}
-        {vue === 'journal'         && <>{topbar}<div style={{ padding: '24px' }}><h2 style={{ color: NAVY }}>Journal de bord</h2><div style={{ ...cardSt, textAlign: 'center', padding: 60, color: MUTED }}>📓 Ce module s&apos;active une fois votre stage démarré.</div></div></>}
+        {vue === 'journal'         && renderJournal()}
         {vue === 'convention'      && renderConvention()}
         {vue === 'profil'          && renderProfil()}
       </main>
       {modal}
+    </div>
+  )
+}
+function JournalVue({ stageId, token }: { stageId: number; token: string }) {
+  const [journaux, setJournaux] = useState<{ id: number; semaine: number; contenu: string; statut: string; commentaire: string | null; dateDepot: string }[]>([])
+  const [semaine, setSemaine] = useState(1)
+  const [contenu, setContenu] = useState('')
+  const [envoi, setEnvoi] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  const recharger = () => {
+    fetch(`/api/journal?stageId=${stageId}`, { headers: { authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setJournaux(d))
+  }
+
+  useEffect(() => { recharger() }, [stageId, token]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const soumettre = async () => {
+    if (!contenu.trim()) { setMsg('Le contenu est requis'); return }
+    setEnvoi(true); setMsg('')
+    try {
+      const r = await fetch('/api/journal', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ stageId, semaine, contenu }),
+      })
+      if (r.ok) {
+        setMsg('✔ Rapport soumis !')
+        setContenu('')
+        fetch(`/api/journal?stageId=${stageId}`, { headers: { authorization: `Bearer ${token}` } })
+          .then(res => res.ok ? res.json() : [])
+          .then(d => setJournaux(d))
+      } else { const d = await r.json(); setMsg(d.error || 'Erreur') }
+    } finally { setEnvoi(false) }
+  }
+
+  const badge = (s: string) => {
+    if (s === 'VALIDE') return { label: 'Validé',     bg: '#dcfce7', color: '#15803d' }
+    if (s === 'REJETE') return { label: 'Rejeté',     bg: '#fee2e2', color: '#b91c1c' }
+    if (s === 'SOUMIS') return { label: 'Soumis',     bg: '#dbeafe', color: '#1d4ed8' }
+    return              { label: 'En attente', bg: '#fef9c3', color: '#a16207' }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #eef2fa', padding: 24 }}>
+        <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700, color: '#0b2f7a' }}>Soumettre un rapport</h3>
+        <div style={{ display: 'flex', gap: 12, marginBottom: 14, alignItems: 'center' }}>
+          <label style={{ fontSize: 13, fontWeight: 600, color: '#6b7a99' }}>Semaine :</label>
+          <input type="number" min={1} max={52} value={semaine}
+            onChange={e => setSemaine(Number(e.target.value))}
+            style={{ width: 70, padding: '8px 10px', border: '1px solid #d1d9f0', borderRadius: 8, fontSize: 13, outline: 'none' }} />
+        </div>
+        <textarea value={contenu} onChange={e => setContenu(e.target.value)}
+          placeholder="Décrivez vos activités de la semaine…"
+          rows={5}
+          style={{ width: '100%', padding: '12px 14px', border: '1px solid #d1d9f0', borderRadius: 10, fontSize: 13, resize: 'vertical', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+        {msg && <p style={{ margin: '8px 0 0', fontSize: 13, fontWeight: 600, color: msg.startsWith('✔') ? '#15803d' : '#b91c1c' }}>{msg}</p>}
+        <button onClick={soumettre} disabled={envoi}
+          style={{ marginTop: 14, padding: '10px 28px', background: '#1d6fe8', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 600, fontSize: 14, cursor: envoi ? 'not-allowed' : 'pointer', opacity: envoi ? 0.7 : 1 }}>
+          {envoi ? 'Envoi…' : 'Soumettre le rapport'}
+        </button>
+      </div>
+      <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #eef2fa', overflow: 'hidden' }}>
+        <div style={{ padding: '16px 22px', borderBottom: '1px solid #f0f4fb' }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#0b2f7a' }}>Historique des rapports</h3>
+        </div>
+        {journaux.length === 0
+          ? <p style={{ textAlign: 'center', padding: 40, color: '#6b7a99' }}>Aucun rapport soumis.</p>
+          : journaux.map(j => {
+            const b = badge(j.statut)
+            return (
+              <div key={j.id} style={{ padding: '16px 22px', borderBottom: '1px solid #f0f4fb' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <span style={{ fontWeight: 700, color: '#0b2f7a' }}>Semaine {j.semaine}</span>
+                  <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600, background: b.bg, color: b.color }}>{b.label}</span>
+                </div>
+                <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.6 }}>{j.contenu}</p>
+                {j.commentaire && (
+                  <div style={{ marginTop: 10, padding: '10px 14px', background: '#f8faff', borderRadius: 8, fontSize: 12, color: '#6b7a99' }}>
+                    💬 <strong>Commentaire encadreur :</strong> {j.commentaire}
+                  </div>
+                )}
+                <p style={{ margin: '8px 0 0', fontSize: 11, color: '#9ca3af' }}>
+                  Déposé le {new Date(j.dateDepot).toLocaleDateString('fr-FR')}
+                </p>
+              </div>
+            )
+          })
+        }
+      </div>
     </div>
   )
 }
