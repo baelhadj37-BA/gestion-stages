@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifierToken } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import prisma from '@/lib/prisma'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -24,11 +24,15 @@ export async function GET(request: NextRequest, { params }: Params) {
       include: {
         stage: {
           include: {
+            evaluation: true,
+            encadreur: {
+              select: { id: true, nom: true, prenom: true, email: true },
+            },
             candidature: {
               include: {
                 offre: {
                   include: {
-                    entreprise: { select: { id: true, nom: true, prenom: true, secteur: true } },
+                    entreprise: { select: { id: true, nom: true, prenom: true, secteur: true, email: true } },
                   },
                 },
                 etudiant: {
@@ -106,14 +110,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     // ── SIGNER (étudiant ou entreprise) ──
     if (action === 'SIGNER') {
       const etudiantId   = convention.stage.candidature.etudiantId
-      // entrepriseId peut être l'id du User OU l'id du profil Entreprise selon le schéma
-      // On compare avec les deux pour être sûr
       const entrepriseUserId  = convention.stage.candidature.offre.entrepriseId
       const entrepriseProfilId = convention.stage.candidature.offre.entreprise?.id ?? null
 
+      console.log('[SIGNER] role:', utilisateur.role, '| userId:', utilisateur.userId, '| etudiantId:', etudiantId, '| entrepriseUserId:', entrepriseUserId, '| statut:', convention.statut)
+
       if (utilisateur.role === 'ETUDIANT' && utilisateur.userId === etudiantId) {
         if (convention.statut !== 'ETAPE_ETUDIANT') {
-          return NextResponse.json({ message: "Ce n'est pas votre étape" }, { status: 400 })
+          return NextResponse.json({ message: "Ce n'est pas votre étape", debug: { statut: convention.statut } }, { status: 400 })
         }
         const conventionMaj = await prisma.convention.update({
           where: { id },
@@ -126,7 +130,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         (utilisateur.userId === entrepriseUserId || utilisateur.userId === entrepriseProfilId)
       ) {
         if (convention.statut !== 'ETAPE_ENTREPRISE') {
-          return NextResponse.json({ message: "Ce n'est pas votre étape" }, { status: 400 })
+          return NextResponse.json({ message: "Ce n'est pas votre étape", debug: { statut: convention.statut } }, { status: 400 })
         }
         const conventionMaj = await prisma.convention.update({
           where: { id },
@@ -134,7 +138,19 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         })
         return NextResponse.json({ message: "Convention transmise à l'admin", data: conventionMaj })
       }
-      return NextResponse.json({ message: 'Action non autorisée', debug: { userId: utilisateur.userId, entrepriseUserId, entrepriseProfilId, statut: convention.statut } }, { status: 403 })
+      return NextResponse.json({
+        message: 'Action non autorisée',
+        debug: {
+          role: utilisateur.role,
+          userId: utilisateur.userId,
+          etudiantId,
+          etudiantMatch: utilisateur.userId === etudiantId,
+          entrepriseUserId,
+          entrepriseProfilId,
+          entrepriseMatch: utilisateur.userId === entrepriseUserId || utilisateur.userId === entrepriseProfilId,
+          statut: convention.statut,
+        }
+      }, { status: 403 })
     }
 
     // ── VALIDER ou REJETER (admin) ──
@@ -151,7 +167,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           where: { id },
           data: { statut: 'REJETEE' },
         })
-        // Notifier l'étudiant
         await prisma.notification.create({
           data: {
             userId: convention.stage.candidature.etudiantId,
@@ -170,7 +185,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       })
       const encadreurAuto = encadreurs[0] ?? null
 
-      // Mettre à jour le stage : encadreur + statut EN_COURS
       await prisma.stage.update({
         where: { id: convention.stageId },
         data: {
@@ -179,13 +193,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         },
       })
 
-      // Valider la convention
       const conventionMaj = await prisma.convention.update({
         where: { id },
         data: { statut: 'VALIDEE', dateValidation: new Date() },
       })
 
-      // Notifier l'étudiant
       const msgEtudiant = encadreurAuto
         ? `Votre convention est validée ! Votre encadreur pédagogique est ${encadreurAuto.prenom} ${encadreurAuto.nom}.`
         : 'Votre convention est validée !'
@@ -197,7 +209,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         },
       })
 
-      // Notifier l'encadreur assigné
       if (encadreurAuto) {
         await prisma.notification.create({
           data: {

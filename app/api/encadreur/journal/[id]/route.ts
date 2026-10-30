@@ -1,6 +1,5 @@
 // app/api/encadreur/journal/[id]/route.ts
 // PATCH — Valider ou rejeter un journal
-// URL : /api/encadreur/journal/[id]
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -40,6 +39,9 @@ export async function PATCH(
         id: journalId,
         stage: { encadreurId: tokenData.userId },
       },
+      include: {
+        stage: true,
+      },
     })
 
     if (!journal) {
@@ -55,6 +57,20 @@ export async function PATCH(
         statut,
         commentaire: commentaire ?? null,
         dateValidation: new Date(),
+      },
+    })
+
+    // Notifier l'étudiant
+    const message = statut === 'VALIDE'
+      ? `Votre journal de bord (Semaine ${journal.semaine}) a été validé par votre encadreur.`
+      : `Votre journal de bord (Semaine ${journal.semaine}) a été rejeté. ${commentaire ? 'Motif : ' + commentaire : ''}`
+
+    await prisma.notification.create({
+      data: {
+        userId: journal.stage.etudiantId,
+        message,
+        type: statut === 'VALIDE' ? 'SUCCES' : 'ALERTE',
+        lu: false,
       },
     })
 

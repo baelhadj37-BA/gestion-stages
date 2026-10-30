@@ -2022,11 +2022,12 @@ export default function AdminDashboard() {
                       </thead>
                       <tbody>
                         {conventionsFiltrees.map((conv, idx) => {
-                          const etudiant = conv.stage.etudiant
+                          const etudiant = conv.stage?.candidature?.etudiant ?? conv.stage?.etudiant
+                          if (!etudiant) return null
                           const offre = conv.stage.candidature.offre
                           const entreprise = offre.entreprise
                           const nomEtudiant = `${etudiant.prenom} ${etudiant.nom}`
-                          const couleurAv = COULEURS_AVATAR[etudiant.id % COULEURS_AVATAR.length]
+                          const couleurAv = COULEURS_AVATAR[(etudiant.id ?? 0) % COULEURS_AVATAR.length]
                           const s = STATUTS_CONV[conv.statut]
                           const enAttenteAdmin = conv.statut === 'ETAPE_ADMIN'
                           const estEnAction = actionConventionId === conv.id
@@ -2281,6 +2282,9 @@ export default function AdminDashboard() {
                               const couleurAv = COULEURS_AVATAR[stage.etudiant.id % COULEURS_AVATAR.length]
                               const s = STATUTS_STAGE[stage.statut] ?? { label: stage.statut, fond: '#eef2fa', texte: MUTED }
                               const nbJournaux = stage.journaux.length
+                              const nbValides = stage.journaux.filter(j => j.statut === 'VALIDE').length
+                              const nbEnAttente = stage.journaux.filter(j => j.statut === 'EN_ATTENTE').length
+                              const nbRejetes = stage.journaux.filter(j => j.statut === 'REJETE').length
                               const nbAlertes = stage.journaux.filter(j => j.alerte).length
                               const estEdit = noteEdit?.id === stage.id
                               return (
@@ -2321,7 +2325,12 @@ export default function AdminDashboard() {
                                   </td>
                                   {/* Journaux */}
                                   <td style={{ padding: '14px 16px' }}>
-                                    <div style={{ fontSize: 13, color: NAVY, fontWeight: 600 }}>{nbJournaux} entrée{nbJournaux > 1 ? 's' : ''}</div>
+                                      <div style={{ fontSize: 13, color: NAVY, fontWeight: 600 }}>{nbJournaux} entrée{nbJournaux > 1 ? 's' : ''}</div>
+                                      <div style={{ fontSize: 11.5, marginTop: 3, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                          {nbValides > 0 && <span style={{ color: '#15803d', fontWeight: 600 }}>{nbValides} validé{nbValides > 1 ? 's' : ''}</span>}
+                                          {nbEnAttente > 0 && <span style={{ color: '#1d56c9', fontWeight: 600 }}>{nbEnAttente} en attente</span>}
+                                          {nbRejetes > 0 && <span style={{ color: '#b91c1c', fontWeight: 600 }}>{nbRejetes} rejeté{nbRejetes > 1 ? 's' : ''}</span>}
+                                      </div>
                                     {nbAlertes > 0 && (
                                       <div style={{ fontSize: 12, color: '#ef4444', fontWeight: 600, marginTop: 2 }}>⚠ {nbAlertes} alerte{nbAlertes > 1 ? 's' : ''}</div>
                                     )}

@@ -104,10 +104,11 @@ model Stage {
   candidature   Candidature @relation(fields: [candidatureId], references: [id])
   candidatureId Int         @unique
 
-  journaux    JournalBord[]
-  convention  Convention?
-  documents   Document[]
-  evaluation  Evaluation?
+  journaux             JournalBord[]
+  convention           Convention?
+  documents            Document[]
+  evaluation           Evaluation?
+  evaluationEntreprise EvaluationEntreprise?
 }
 
 model JournalBord {
@@ -167,6 +168,18 @@ model Evaluation {
   id          Int      @id @default(autoincrement())
   note        Int
   commentaire String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stage   Stage @relation(fields: [stageId], references: [id])
+  stageId Int   @unique
+}
+
+model EvaluationEntreprise {
+  id          Int      @id @default(autoincrement())
+  note        Int
+  commentaire String?  @db.Text
+  attestation Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

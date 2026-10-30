@@ -1,6 +1,4 @@
 // app/api/pdf/attestation/[stageId]/route.ts
-// Génère et retourne le PDF d'attestation de fin de stage
-
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 import { verifierToken } from '@/lib/auth'
@@ -15,11 +13,16 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ stageId: string }> }
 ) {
+  // Accepter le token depuis le header OU depuis ?token= (lien direct)
   const authHeader = req.headers.get('authorization') ?? ''
-  const token = authHeader.replace('Bearer ', '')
+  const tokenFromHeader = authHeader.replace('Bearer ', '')
+  const tokenFromQuery = req.nextUrl.searchParams.get('token') ?? ''
+  const token = tokenFromHeader || tokenFromQuery
+
   const payload = verifierToken(token)
 
-  if (!payload || payload.role !== 'ADMIN') {
+  // Autoriser ETUDIANT, ENCADREUR et ADMIN
+  if (!payload || !['ETUDIANT', 'ENCADREUR', 'ADMIN'].includes(payload.role)) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   }
 
@@ -46,6 +49,11 @@ export async function GET(
 
   if (!stage) {
     return NextResponse.json({ error: 'Stage introuvable' }, { status: 404 })
+  }
+
+  // Vérifier que l'étudiant accède bien à son propre stage
+  if (payload.role === 'ETUDIANT' && stage.etudiantId !== payload.userId) {
+    return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
   }
 
   if (stage.statut !== 'TERMINE') {

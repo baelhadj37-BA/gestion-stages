@@ -142,14 +142,12 @@ function EvaluationCard({ stagiaire, token }: { stagiaire: Stagiaire; token: str
   const CARTE: CSSProperties = { background:'#fff', borderRadius:14, border:'1px solid #eef2fa', boxShadow:'0 2px 10px rgba(30,70,150,0.06)' }
 
   const [note, setNote] = useState(0)
-  const [survol, setSurvol] = useState(0)
   const [commentaire, setCommentaire] = useState('')
   const [enCours, setEnCours] = useState(false)
   const [message, setMessage] = useState('')
   const [evalExistante, setEvalExistante] = useState<Evaluation | null>(null)
 
   useEffect(() => {
-    // Charger évaluation existante
     fetch(`/api/encadreur/evaluations?stagiaireId=${stagiaire.id}`, {
       headers: { authorization: `Bearer ${token}` }
     }).then(r => r.json()).then(d => {
@@ -162,7 +160,8 @@ function EvaluationCard({ stagiaire, token }: { stagiaire: Stagiaire; token: str
   }, [stagiaire.id, token])
 
   const sauvegarder = async () => {
-    if (note === 0) { setMessage('⚠ Veuillez sélectionner une note'); return }
+    if (note === 0) { setMessage('⚠ Veuillez saisir une note entre 1 et 20'); return }
+    if (note < 0 || note > 20) { setMessage('⚠ La note doit être entre 0 et 20'); return }
     setEnCours(true); setMessage('')
     try {
       const res = await fetch('/api/encadreur/evaluations', {
@@ -182,7 +181,11 @@ function EvaluationCard({ stagiaire, token }: { stagiaire: Stagiaire; token: str
   }
 
   const couleur = couleurAvatar(stagiaire.nom)
-  const labels = ['','Insuffisant','Passable','Bien','Très bien','Excellent']
+  const mention = note >= 16 ? { label:'Très bien', bg:'#dcfce7', color:'#15803d' }
+               : note >= 12 ? { label:'Bien',       bg:'#fef3c7', color:'#d97706' }
+               : note >= 10 ? { label:'Passable',   bg:'#e0f2fe', color:'#0369a1' }
+               : note >  0  ? { label:'Insuffisant',bg:'#fee2e2', color:'#b91c1c' }
+               : null
 
   return (
     <div style={{ ...CARTE, padding:'24px 28px' }}>
@@ -195,45 +198,28 @@ function EvaluationCard({ stagiaire, token }: { stagiaire: Stagiaire; token: str
           <p style={{ margin:'2px 0 0', fontSize:12, color:MUTED }}>{stagiaire.filiere} · {stagiaire.classe} · {stagiaire.convention?.offre?.titre ?? 'Stage'}</p>
         </div>
         {evalExistante && (
-          <span style={{ padding:'4px 12px', borderRadius:20, background:'#dcfce7', color:'#15803d', fontSize:12, fontWeight:600 }}>Évalué</span>
+          <span style={{ padding:'4px 12px', borderRadius:20, background:'#dcfce7', color:'#15803d', fontSize:12, fontWeight:600 }}>Évalué ✓</span>
         )}
       </div>
 
-      {/* Étoiles */}
-      <div style={{ marginBottom:16 }}>
+      {/* Note /20 */}
+      <div style={{ marginBottom:20 }}>
         <p style={{ margin:'0 0 10px', fontSize:13, fontWeight:600, color:NAVY }}>Note globale</p>
-        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-          {[1,2,3,4,5].map(i => (
-            <svg key={i} viewBox="0 0 24 24" width={32} height={32}
-              fill={(survol || note) >= i ? '#f59e0b' : 'none'}
-              stroke="#f59e0b" strokeWidth={1.5}
-              style={{ cursor:'pointer', transition:'transform .15s', transform:(survol||note)>=i?'scale(1.15)':'scale(1)' }}
-              onMouseEnter={()=>setSurvol(i)} onMouseLeave={()=>setSurvol(0)}
-              onClick={()=>setNote(i)}>
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-            </svg>
-          ))}
-          {(survol || note) > 0 && (
-            <span style={{ fontSize:13, color:MUTED, marginLeft:8 }}>{labels[survol || note]}</span>
+        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+          <input
+            type="number" min={0} max={20} step={0.5}
+            value={note === 0 ? '' : note}
+            onChange={e => setNote(Number(e.target.value))}
+            placeholder="0"
+            style={{ width:80, padding:'10px 12px', border:'2px solid #d1d9f0', borderRadius:10, fontSize:22, fontWeight:700, color:NAVY, textAlign:'center', outline:'none', boxSizing:'border-box' }}
+          />
+          <span style={{ fontSize:20, fontWeight:700, color:MUTED }}>/20</span>
+          {mention && (
+            <span style={{ fontSize:13, fontWeight:600, padding:'5px 14px', borderRadius:20, background:mention.bg, color:mention.color }}>
+              {mention.label}
+            </span>
           )}
         </div>
-      </div>
-
-      {/* Critères rapides */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:16 }}>
-        {['Ponctualité','Travail en équipe','Compétences techniques'].map(critere => (
-          <div key={critere} style={{ background:'#f8faff', borderRadius:8, padding:'10px 12px', textAlign:'center' }}>
-            <p style={{ margin:'0 0 6px', fontSize:11, color:MUTED }}>{critere}</p>
-            <div style={{ display:'flex', justifyContent:'center', gap:3 }}>
-              {[1,2,3,4,5].map(i => (
-                <svg key={i} viewBox="0 0 24 24" width={14} height={14}
-                  fill={i<=note?'#f59e0b':'none'} stroke="#f59e0b" strokeWidth={2}>
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                </svg>
-              ))}
-            </div>
-          </div>
-        ))}
       </div>
 
       {/* Commentaire */}
@@ -428,6 +414,7 @@ export default function EncadreurDashboard() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [chargement, setChargement] = useState(true)
   const [erreur, setErreur] = useState('')
+  const [tokenState, setTokenState] = useState('')
   const [stagiaires, setStagiaires] = useState<Stagiaire[]>([])
   const [stagiairesChargement, setStagiairesChargement] = useState(false)
   const [stagiaireSelectionne, setStagiaireSelectionne] = useState<Stagiaire | null>(null)
@@ -470,6 +457,7 @@ export default function EncadreurDashboard() {
 
   useEffect(() => {
     const token = localStorage.getItem('token')
+    setTimeout(() => setTokenState(token || ''), 0)
     const brut  = localStorage.getItem('user')
     if (!token || !brut) { router.push('/login'); return }
     let utilisateur: { nom: string; prenom: string; role: string }
@@ -1237,7 +1225,7 @@ export default function EncadreurDashboard() {
               ) : (
                 <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
                   {stagiaires.map(s => (
-                    <EvaluationCard key={s.id} stagiaire={s} token={localStorage.getItem('token') || ''} />
+                    <EvaluationCard key={s.id} stagiaire={s} token={tokenState} />
                   ))}
                 </div>
               )}
@@ -1246,7 +1234,7 @@ export default function EncadreurDashboard() {
 
           {/* ═══ MESSAGES ═══ */}
           {vue === 'messages' && (
-            <MessagesVue stagiaires={stagiaires} token={localStorage.getItem('token') || ''} />
+            <MessagesVue stagiaires={stagiaires} token={tokenState} />
           )}
           {vue === 'parametres' && (
             <>

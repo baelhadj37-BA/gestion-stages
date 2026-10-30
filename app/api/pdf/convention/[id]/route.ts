@@ -1,31 +1,45 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { generateConventionPDF } from '@/lib/pdf-generator';
+import { NextRequest, NextResponse } from 'next/server'
+import { verifierToken } from '@/lib/auth'
+import { generateConventionPDF } from '@/lib/pdf-generator'
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+type Params = { params: Promise<{ id: string }> }
+
+export async function GET(request: NextRequest, { params }: Params) {
   try {
-    const resolvedParams = await params;
-    const conventionId = resolvedParams.id || 'STAGE-IPD-2026-001';
+    const resolvedParams = await params
+    const conventionId = resolvedParams.id
 
-    // Génération du PDF via Puppeteer
-    const pdfBuffer = await generateConventionPDF(conventionId);
-    const uint8Array = new Uint8Array(pdfBuffer);
+    const token =
+      request.headers.get('authorization')?.split(' ')[1] ||
+      request.nextUrl.searchParams.get('token') ||
+      null
 
-    // 'inline' permet d'ouvrir et prévisualiser le PDF dans le navigateur
+    if (!token) {
+      return NextResponse.json({ message: 'Token manquant' }, { status: 401 })
+    }
+
+    const utilisateur = verifierToken(token)
+    if (!utilisateur) {
+      return NextResponse.json({ message: 'Token invalide' }, { status: 401 })
+    }
+
+    const id = Number(conventionId)
+    if (isNaN(id)) {
+      return NextResponse.json({ message: 'ID invalide' }, { status: 400 })
+    }
+
+    const pdfBuffer = await generateConventionPDF(conventionId)
+    const uint8Array = new Uint8Array(pdfBuffer)
+
     return new NextResponse(uint8Array, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `inline; filename="convention-${conventionId}.pdf"`,
       },
-    });
+    })
   } catch (error) {
-    console.error('Erreur Puppeteer (API PDF) :', error);
-    return NextResponse.json(
-      { message: 'Erreur lors de la génération du PDF.' },
-      { status: 500 }
-    );
+    console.error('[GET /api/pdf/convention/[id]]', error)
+    return NextResponse.json({ message: 'Erreur génération PDF' }, { status: 500 })
   }
 }

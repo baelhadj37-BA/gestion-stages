@@ -3,7 +3,7 @@
 
 'use client'
 
-import {
+import React, {
   useState,
   useEffect,
   useSyncExternalStore,
@@ -67,6 +67,15 @@ interface Convention {
   createdAt: string
   etudiant: { nom: string; prenom: string; email: string }
   offre: { titre: string; duree: string }
+  stageId?: number
+  stageStatut?: string
+  evaluationEntreprise?: { note: number; commentaire: string | null; attestation: boolean } | null
+}
+
+interface EvalForm {
+  note: string
+  commentaire: string
+  attestation: boolean
 }
 
 /* ─── Mise à l'échelle ─── */
@@ -292,6 +301,12 @@ export default function EntrepriseDashboard() {
   const [conventionsErreur, setConventionsErreur] = useState('')
   const [signatureEnCours, setSignatureEnCours] = useState<number | null>(null)
 
+  // Évaluation entreprise
+  const [evalForms, setEvalForms] = useState<Record<number, EvalForm>>({})
+  const [evalEnCours, setEvalEnCours] = useState<number | null>(null)
+  const [evalMsgs, setEvalMsgs] = useState<Record<number, { type: 'ok' | 'err'; texte: string }>>({})
+  const [evalOuverts, setEvalOuverts] = useState<Record<number, boolean>>({})
+
   // ── Paramètres ──
   const [mdpForm, setMdpForm] = useState({ ancien: '', nouveau: '', confirmation: '' })
   const [mdpEnvoi, setMdpEnvoi] = useState(false)
@@ -486,7 +501,7 @@ export default function EntrepriseDashboard() {
       })
       if (!res.ok) { setCandidaturesErreur('Impossible de charger les candidatures'); return }
       const data = await res.json()
-      setCandidatures(data.candidatures)
+      setCandidatures(data.candidatures ?? data.data ?? [])
     } catch {
       setCandidaturesErreur('Impossible de contacter le serveur.')
     } finally {
@@ -532,6 +547,9 @@ export default function EntrepriseDashboard() {
         statut: Convention['statut']
         createdAt: string
         stage: {
+          id: number
+          statut: string
+          evaluationEntreprise?: { note: number; commentaire: string | null; attestation: boolean } | null
           candidature: {
             etudiant: { nom: string; prenom: string; email: string }
             offre: { titre: string; duree: string }
@@ -544,6 +562,9 @@ export default function EntrepriseDashboard() {
         createdAt: c.createdAt,
         etudiant: c.stage.candidature.etudiant,
         offre: { titre: c.stage.candidature.offre.titre, duree: c.stage.candidature.offre.duree },
+        stageId: c.stage.id,
+        stageStatut: c.stage.statut,
+        evaluationEntreprise: c.stage.evaluationEntreprise,
       }))
       setConventions(conventions)
     } catch {
@@ -555,20 +576,70 @@ export default function EntrepriseDashboard() {
 
   const signerConvention = async (conventionId: number) => {
     const token = localStorage.getItem('token')
-    setSignatureEnCours(conventionId)
+      setSignatureEnCours(conventionId)
+
     try {
       const res = await fetch(`/api/conventions/${conventionId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        headers: {
+        'Content-Type': 'application/json',
+        authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({ action: 'SIGNER' }),
       })
-      if (!res.ok) return
-      setConventions(prev =>
-        prev.map(c => c.id === conventionId ? { ...c, statut: 'ETAPE_ADMIN' as const } : c)
-      )
-    } catch { /* silencieux */ }
-    finally {
-      setSignatureEnCours(null)
+
+      const data = await res.json()
+
+      if (!res.ok) {
+      alert(data.message || data.error || 'Erreur lors de la signature')
+      console.error('Erreur signature entreprise :', data)
+      return
+    }
+
+    await chargerConventions()
+    alert('Convention signée avec succès.')
+    } catch (error) {
+    console.error('Erreur réseau :', error)
+    alert('Impossible de contacter le serveur.')
+    } finally {
+    setSignatureEnCours(null)
+    }
+  }
+
+  const soumettreEvaluation = async (conv: Convention) => {
+    if (!conv.stageId) return
+    const stageId = conv.stageId
+    const form = evalForms[stageId] ?? { note: '', commentaire: '', attestation: false }
+    const noteNum = Number(form.note)
+    if (isNaN(noteNum) || noteNum < 0 || noteNum > 20) {
+      setEvalMsgs(prev => ({ ...prev, [stageId]: { type: 'err', texte: 'Note invalide (0 à 20)' } }))
+      return
+    }
+    const token = localStorage.getItem('token')
+    setEvalEnCours(stageId)
+    setEvalMsgs(prev => ({ ...prev, [stageId]: undefined as never }))
+    try {
+      const res = await fetch(`/api/evaluation-entreprise/${stageId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ note: noteNum, commentaire: form.commentaire || null, attestation: form.attestation }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setEvalMsgs(prev => ({ ...prev, [stageId]: { type: 'err', texte: data.message ?? 'Erreur lors de l\'enregistrement' } }))
+        return
+      }
+      setEvalMsgs(prev => ({ ...prev, [stageId]: { type: 'ok', texte: '✓ Évaluation enregistrée' } }))
+      // Mettre à jour l'évaluation dans la liste des conventions
+      setConventions(prev => prev.map(c =>
+        c.stageId === stageId
+          ? { ...c, evaluationEntreprise: { note: noteNum, commentaire: form.commentaire || null, attestation: form.attestation } }
+          : c
+      ))
+    } catch {
+      setEvalMsgs(prev => ({ ...prev, [stageId]: { type: 'err', texte: 'Impossible de contacter le serveur.' } }))
+    } finally {
+      setEvalEnCours(null)
     }
   }
 
@@ -1457,7 +1528,7 @@ export default function EntrepriseDashboard() {
                   }}>
                     {f === 'TOUS' ? 'Toutes' : f === 'EN_ATTENTE' ? 'En attente' : f === 'ACCEPTEE' ? 'Acceptées' : 'Refusées'}
                     <span style={{ marginLeft: 6, fontSize: 11 }}>
-                      ({f === 'TOUS' ? candidatures.length : candidatures.filter(c => c.statut === f).length})
+                     ({f === 'TOUS' ? (candidatures || []).length : (candidatures || []).filter(c => c.statut === f).length})
                     </span>
                   </button>
                 ))}
@@ -1562,10 +1633,10 @@ export default function EntrepriseDashboard() {
                         </tr>
                       </thead>
                       <tbody>
-                        {(filtreStatut === 'TOUS' ? candidatures : candidatures.filter(c => c.statut === filtreStatut)).length === 0 ? (
+                        {(filtreStatut === 'TOUS' ? (candidatures || []) : (candidatures || []).filter(c => c.statut === filtreStatut)).length === 0 ? (
                           <tr><td colSpan={6} style={{ padding: 40, textAlign: 'center', color: MUTED }}>Aucune candidature trouvée</td></tr>
                         ) : (
-                          (filtreStatut === 'TOUS' ? candidatures : candidatures.filter(c => c.statut === filtreStatut)).map(c => {
+                          (filtreStatut === 'TOUS' ? (candidatures || []) : (candidatures || []).filter(c => c.statut === filtreStatut)).map(c => {
                             const badge = c.statut === 'ACCEPTEE'
                               ? { label: 'Acceptée',   fond: '#d9f5e3', texte: '#15803d' }
                               : c.statut === 'REFUSEE'
@@ -1686,7 +1757,8 @@ export default function EntrepriseDashboard() {
                         {conventions.map((conv) => {
                           const badge = conventionStatutBadge(conv)
                           return (
-                            <tr key={conv.id} style={{ borderBottom: '1px solid #f1f5fb' }}>
+                            <React.Fragment key={conv.id}>
+                            <tr style={{ borderBottom: '1px solid #f1f5fb' }}>
                               <td style={{ padding: '14px 16px' }}>
                                 <div style={{ fontWeight: 600, color: NAVY }}>{conv.etudiant.prenom} {conv.etudiant.nom}</div>
                                 <div style={{ fontSize: 11, color: MUTED }}>{conv.etudiant.email}</div>
@@ -1725,30 +1797,149 @@ export default function EntrepriseDashboard() {
                                 </div>
                               </td>
                               <td style={{ padding: '14px 16px' }}>
-                                {conv.statut === 'ETAPE_ENTREPRISE' ? (
-                                  <button
-                                    onClick={() => signerConvention(conv.id)}
-                                    disabled={signatureEnCours === conv.id}
-                                    style={{
-                                      display: 'flex', alignItems: 'center', gap: 6,
-                                      padding: '8px 16px', background: BLUE, color: '#fff',
-                                      border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 12,
-                                      cursor: signatureEnCours === conv.id ? 'not-allowed' : 'pointer',
-                                      opacity: signatureEnCours === conv.id ? 0.7 : 1,
-                                      whiteSpace: 'nowrap',
-                                    }}
-                                  >
-                                    <Icon name="docCheck" size={14} sw={2.2} />
-                                    {signatureEnCours === conv.id ? 'Signature…' : 'Signer'}
-                                  </button>
-                                ) : conv.statut === 'VALIDEE' || conv.statut === 'ETAPE_ADMIN' ? (
-                                  <span style={{ fontSize: 12, color: '#15803d', fontWeight: 600 }}>✓ Signé</span>
-                                ) : (
-                                  <span style={{ fontSize: 12, color: MUTED }}>En attente</span>
-                                )}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                  {conv.statut === 'ETAPE_ENTREPRISE' ? (
+                                    <button
+                                      onClick={() => signerConvention(conv.id)}
+                                      disabled={signatureEnCours === conv.id}
+                                      style={{
+                                        display: 'flex', alignItems: 'center', gap: 6,
+                                        padding: '8px 16px', background: BLUE, color: '#fff',
+                                        border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 12,
+                                        cursor: signatureEnCours === conv.id ? 'not-allowed' : 'pointer',
+                                        opacity: signatureEnCours === conv.id ? 0.7 : 1,
+                                        whiteSpace: 'nowrap',
+                                      }}
+                                    >
+                                      <Icon name="docCheck" size={14} sw={2.2} />
+                                      {signatureEnCours === conv.id ? 'Signature…' : 'Signer'}
+                                    </button>
+                                  ) : conv.statut === 'VALIDEE' || conv.statut === 'ETAPE_ADMIN' ? (
+                                    <span style={{ fontSize: 12, color: '#15803d', fontWeight: 600 }}>✓ Signé</span>
+                                  ) : (
+                                    <span style={{ fontSize: 12, color: MUTED }}>En attente</span>
+                                  )}
+                                  {/* Bouton évaluer si stage terminé */}
+                                  {conv.stageId && conv.stageStatut === 'TERMINE' && (
+                                    <button
+                                      onClick={() => setEvalOuverts(prev => ({ ...prev, [conv.stageId!]: !prev[conv.stageId!] }))}
+                                      style={{
+                                        padding: '6px 12px', background: evalOuverts[conv.stageId] ? '#f1f5f9' : '#ede9fe',
+                                        color: evalOuverts[conv.stageId] ? MUTED : '#7c3aed',
+                                        border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 12, cursor: 'pointer',
+                                        whiteSpace: 'nowrap',
+                                      }}
+                                    >
+                                      {conv.evaluationEntreprise ? '✏️ Modifier éval.' : '⭐ Évaluer'}
+                                    </button>
+                                  )}
+                                </div>
                               </td>
                             </tr>
-                          )
+                            {/* Panneau d'évaluation entreprise */}
+                            {conv.stageId && conv.stageStatut === 'TERMINE' && evalOuverts[conv.stageId] && (
+                              <tr key={`eval-${conv.id}`}>
+                                <td colSpan={6} style={{ padding: '0 16px 16px', background: '#fafbff' }}>
+                                  <div style={{
+                                    border: '1.5px solid #ede9fe', borderRadius: 12, padding: '20px 24px',
+                                    background: '#fff',
+                                  }}>
+                                    <h3 style={{ margin: '0 0 16px', fontSize: 14, fontWeight: 700, color: '#7c3aed', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      ⭐ Évaluation de {conv.etudiant.prenom} {conv.etudiant.nom}
+                                      {conv.evaluationEntreprise && (
+                                        <span style={{ fontSize: 12, fontWeight: 500, color: '#15803d', background: '#d9f5e3', padding: '2px 8px', borderRadius: 20 }}>
+                                          Déjà noté : {conv.evaluationEntreprise.note}/20
+                                        </span>
+                                      )}
+                                    </h3>
+                                    <div style={{ display: 'grid', gridTemplateColumns: bureau ? '120px 1fr auto' : '1fr', gap: 14, alignItems: 'start' }}>
+                                      {/* Note */}
+                                      <div>
+                                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 6 }}>Note / 20 *</label>
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          max={20}
+                                          step={0.5}
+                                          value={evalForms[conv.stageId]?.note ?? (conv.evaluationEntreprise ? String(conv.evaluationEntreprise.note) : '')}
+                                          onChange={e => setEvalForms(prev => ({
+                                            ...prev,
+                                            [conv.stageId!]: {
+                                              ...prev[conv.stageId!] ?? { note: '', commentaire: conv.evaluationEntreprise?.commentaire ?? '', attestation: conv.evaluationEntreprise?.attestation ?? false },
+                                              note: e.target.value,
+                                            }
+                                          }))}
+                                          placeholder="ex. 14"
+                                          style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #d1d9f0', borderRadius: 8, fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
+                                        />
+                                      </div>
+                                      {/* Commentaire */}
+                                      <div>
+                                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 6 }}>Commentaire (facultatif)</label>
+                                        <textarea
+                                          rows={2}
+                                          value={evalForms[conv.stageId]?.commentaire ?? (conv.evaluationEntreprise?.commentaire ?? '')}
+                                          onChange={e => setEvalForms(prev => ({
+                                            ...prev,
+                                            [conv.stageId!]: {
+                                              ...prev[conv.stageId!] ?? { note: conv.evaluationEntreprise ? String(conv.evaluationEntreprise.note) : '', commentaire: '', attestation: conv.evaluationEntreprise?.attestation ?? false },
+                                              commentaire: e.target.value,
+                                            }
+                                          }))}
+                                          placeholder="Appréciation générale de l'étudiant…"
+                                          style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #d1d9f0', borderRadius: 8, fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                                        />
+                                      </div>
+                                      {/* Bouton soumettre */}
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                        <button
+                                          onClick={() => soumettreEvaluation(conv)}
+                                          disabled={evalEnCours === conv.stageId}
+                                          style={{
+                                            padding: '10px 20px', background: '#7c3aed', color: '#fff',
+                                            border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13,
+                                            cursor: evalEnCours === conv.stageId ? 'not-allowed' : 'pointer',
+                                            opacity: evalEnCours === conv.stageId ? 0.7 : 1,
+                                            whiteSpace: 'nowrap', marginTop: 18,
+                                          }}
+                                        >
+                                          {evalEnCours === conv.stageId ? 'Enregistrement…' : '✓ Enregistrer'}
+                                        </button>
+                                      </div>
+                                    </div>
+                                    {/* Attestation checkbox */}
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, cursor: 'pointer', fontSize: 13, color: NAVY, fontWeight: 500 }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={evalForms[conv.stageId]?.attestation ?? (conv.evaluationEntreprise?.attestation ?? false)}
+                                        onChange={e => setEvalForms(prev => ({
+                                          ...prev,
+                                          [conv.stageId!]: {
+                                            ...prev[conv.stageId!] ?? { note: conv.evaluationEntreprise ? String(conv.evaluationEntreprise.note) : '', commentaire: conv.evaluationEntreprise?.commentaire ?? '' , attestation: false },
+                                            attestation: e.target.checked,
+                                          }
+                                        }))}
+                                        style={{ width: 16, height: 16, accentColor: '#7c3aed', cursor: 'pointer' }}
+                                      />
+                                      Délivrer l&apos;attestation de fin de stage à l&apos;étudiant
+                                    </label>
+                                    {/* Message retour */}
+                                    {evalMsgs[conv.stageId] && (
+                                      <div style={{
+                                        marginTop: 12, padding: '9px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500,
+                                        background: evalMsgs[conv.stageId].type === 'ok' ? '#d1fae5' : '#fee2e2',
+                                        color: evalMsgs[conv.stageId].type === 'ok' ? '#065f46' : '#991b1b',
+                                        border: `1px solid ${evalMsgs[conv.stageId].type === 'ok' ? '#6ee7b7' : '#fca5a5'}`,
+                                      }}>
+                                        {evalMsgs[conv.stageId].texte}
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                            </React.Fragment>
+                        )
                         })}
                       </tbody>
                     </table>

@@ -46,6 +46,7 @@ export async function GET(req: NextRequest) {
         },
       },
       convention: true,
+      evaluation: true,
     },
     orderBy: { dateDebut: "desc" },
   });
@@ -116,6 +117,7 @@ export async function GET(req: NextRequest) {
             },
           },
           convention: true,
+          evaluation: true,
         },
       });
     }
