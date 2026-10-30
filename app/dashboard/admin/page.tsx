@@ -2022,9 +2022,10 @@ export default function AdminDashboard() {
                       </thead>
                       <tbody>
                         {conventionsFiltrees.map((conv, idx) => {
-                          const etudiant = conv.stage?.etudiant ?? null
-                          if (!etudiant) return null
-                          const offre = conv.stage?.candidature?.offre
+                          if (!conv.stage?.candidature) return null
+                          const etudiant = (conv.stage.candidature as any).etudiant
+                          const offre = conv.stage.candidature.offre
+                          if (!etudiant || !offre) return null
                           const entreprise = offre?.entreprise
                           const nomEtudiant = `${etudiant.prenom} ${etudiant.nom}`
                           const couleurAv = COULEURS_AVATAR[(etudiant.id ?? 0) % COULEURS_AVATAR.length]
