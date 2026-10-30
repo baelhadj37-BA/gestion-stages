@@ -1125,16 +1125,31 @@ export default function DashboardEtudiant() {
                       </div>
                     )}
 
-                    {/* Attestation de stage — visible quand l'entreprise a accordé l'attestation */}
-                    {convDetail.stage?.evaluationEntreprise?.attestation && (
+                    {(convDetail.stage?.evaluationEntreprise?.attestation ||
+                      (convDetail.stage?.statut === 'TERMINE' && convDetail.stage?.evaluation?.note != null)) && (
                       <div style={{ ...cardSt, border: '2px solid #15803d', background: '#f0fdf4', padding: '20px 22px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                           <span style={{ fontSize: 22 }}>🎓</span>
                           <span style={{ fontWeight: 700, fontSize: 15, color: '#15803d' }}>Attestation de stage</span>
                         </div>
-                        <p style={{ margin: '0 0 16px', fontSize: 13, color: MUTED, lineHeight: 1.6 }}>
-                          Votre stage est terminé et validé. Vous pouvez télécharger votre attestation officielle de stage.
-                        </p>
+
+                        {/* Aperçu du document */}
+                        <div style={{ background: '#fff', border: '1px solid #bbf7d0', borderRadius: 10, padding: '16px', marginBottom: 14, fontSize: 12, color: '#374151', lineHeight: 1.8 }}>
+                          <div style={{ fontWeight: 800, fontSize: 13, color: '#0b2f7a', textAlign: 'center', textTransform: 'uppercase', borderBottom: '2px solid #0b2f7a', paddingBottom: 8, marginBottom: 10 }}>
+                            Attestation de Fin de Stage
+                          </div>
+                          <div><span style={{ color: '#6b7a99' }}>Étudiant(e) :</span> <strong>{convDetail.stage?.etudiant?.prenom} {convDetail.stage?.etudiant?.nom}</strong></div>
+                          <div><span style={{ color: '#6b7a99' }}>Stage :</span> <strong>{convDetail.stage?.candidature?.offre?.titre ?? '—'}</strong></div>
+                          <div><span style={{ color: '#6b7a99' }}>Entreprise :</span> {convDetail.stage?.candidature?.offre?.entreprise?.nom ?? '—'}</div>
+                          <div><span style={{ color: '#6b7a99' }}>Durée :</span> {convDetail.stage?.candidature?.offre?.duree ?? '—'}</div>
+                          {convDetail.stage?.evaluation?.note != null && (
+                            <div style={{ marginTop: 8, background: '#f0fdf4', borderRadius: 6, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span>⭐</span>
+                              <span style={{ fontWeight: 800, color: '#15803d', fontSize: 14 }}>{convDetail.stage.evaluation.note} / 20</span>
+                            </div>
+                          )}
+                        </div>
+
                         <a
                           href={`/api/pdf/attestation/${convDetail.stage.id}?token=${typeof window !== 'undefined' ? localStorage.getItem('token') ?? '' : ''}`}
                           target="_blank"

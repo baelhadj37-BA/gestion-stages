@@ -9,6 +9,7 @@ export function proxy(req: NextRequest) {
     routesPubliques.includes(pathname) ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api/pdf') ||
+    pathname.startsWith('/verify') ||
     pathname.includes('.')
   ) {
     return NextResponse.next();

@@ -41,7 +41,7 @@ model User {
   email       String   @unique
   motDePasse  String
   role        Role     @default(ETUDIANT)
-  competences String?
+  competences String?  @db.Text
   matricule   String?
   classe      String?
   secteur     String?
