@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     const includeBase = {
       stage: {
         include: {
-          evaluationEntreprise: true,
+         
           candidature: {
             include: {
               offre: {

@@ -33,6 +33,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
     const stageId = Number(stageIdStr)
     if (isNaN(stageId)) return NextResponse.json({ message: 'ID invalide' }, { status: 400 })
+
     const stage = await prisma.stage.findUnique({
       where: { id: stageId },
       include: {
@@ -50,23 +51,45 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (stage.statut !== 'TERMINE') {
       return NextResponse.json({ message: 'Le stage doit être terminé' }, { status: 400 })
     }
+
     const body = await request.json()
     const { note, commentaire, attestation } = body
     if (note === undefined || note < 0 || note > 20) {
       return NextResponse.json({ message: 'Note invalide (0-20)' }, { status: 400 })
     }
+
+    // Récupérer l'évaluation existante
+    const evalExistante = await prisma.evaluationEntreprise.findUnique({ where: { stageId } })
+    const attestationNouvelleSignature = (attestation === true) && (evalExistante?.attestation !== true)
+
     const evaluation = await prisma.evaluationEntreprise.upsert({
       where: { stageId },
       update: { note, commentaire: commentaire ?? null, attestation: attestation ?? false },
       create: { stageId, note, commentaire: commentaire ?? null, attestation: attestation ?? false },
     })
-    await prisma.notification.create({
-      data: {
-        userId: stage.etudiantId,
-        message: `Votre entreprise vous a attribué une note de ${note}/20${attestation ? " et a délivré votre attestation de fin de stage." : "."}`,
-        type: 'EVALUATION_ENTREPRISE',
-      },
-    })
+
+    // Notification de note (seulement à la première évaluation)
+    if (!evalExistante) {
+      await prisma.notification.create({
+        data: {
+          userId: stage.etudiantId,
+          message: `Votre entreprise vous a attribué une note de ${note}/20 pour votre stage.`,
+          type: 'EVALUATION_ENTREPRISE',
+        },
+      })
+    }
+
+    // Notification attestation (seulement quand elle passe de false → true)
+    if (attestationNouvelleSignature) {
+      await prisma.notification.create({
+        data: {
+          userId: stage.etudiantId,
+          message: `🎓 Votre attestation de fin de stage a été signée par votre entreprise. Elle est maintenant disponible.`,
+          type: 'ATTESTATION_DISPONIBLE',
+        },
+      })
+    }
+
     return NextResponse.json({ message: 'Évaluation enregistrée', data: evaluation }, { status: 200 })
   } catch (error) {
     console.error('[POST /api/evaluation-entreprise/[stageId]]', error)

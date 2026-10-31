@@ -78,6 +78,25 @@ interface Convention {
     }
   }
 }
+interface Tache {
+  id: number
+  titre: string
+  description: string | null
+  deadline: string | null
+  statut: 'EN_ATTENTE' | 'EN_COURS' | 'TERMINEE'
+  stageId: number
+  createdAt: string
+}
+interface StageEtudiant {
+  id: number
+  statut: string
+  dateDebut: string
+  dateFin: string
+  taches: Tache[]
+  candidature: {
+    offre: { titre: string; entreprise: { nom: string; prenom: string } }
+  }
+}
 
 function scoreCouleur(s: number) {
   if (s >= 70) return { color: '#15803d', bg: '#dcfce7', label: 'Excellent matching' }
@@ -121,6 +140,8 @@ const MENU = [
     icon: <svg width="20" height="20" fill="none" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg> },
   { id: 'profil',       label: 'Mon profil',
     icon: <svg width="20" height="20" fill="none" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.8"/><circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="1.8"/></svg> },
+  { id: 'taches',       label: 'Mes tâches',
+    icon: <svg width="20" height="20" fill="none" viewBox="0 0 24 24"><polyline points="9,11 12,14 22,4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg> },
 ]
 
 const inputSt: React.CSSProperties = {
@@ -176,6 +197,8 @@ export default function DashboardEtudiant() {
   const [errProfil, setErrProfil] = useState('')
   const [saving,    setSaving]    = useState(false)
   const [menuOuvert, setMenuOuvert] = useState(false)
+  const [stagesEtud, setStagesEtud] = useState<StageEtudiant[]>([])
+  const [chgtStages, setChgtStages] = useState(false)
 
   const largeur = useSyncExternalStore(abonnerRedimension, lireLargeur, largeurServeur)
   const echelle = largeur >= 1024 ? Math.min(Math.max(largeur / LARGEUR_MAQUETTE, 0.6), 1.5) : 1
@@ -260,11 +283,22 @@ export default function DashboardEtudiant() {
   }, [])
 
   const deco = () => { localStorage.removeItem('token'); router.push('/login') }
+
+  const chargerStagesEtud = useCallback(async () => {
+    setChgtStages(true)
+    const token = localStorage.getItem('token')
+    const res = await fetch('/api/taches/etudiant', { headers: { Authorization: `Bearer ${token}` } })
+    const data = await res.json()
+    setStagesEtud(data.data || [])
+    setChgtStages(false)
+  }, [])
+
   const nav  = (id: string) => {
     setVue(id)
     setMsgProfil('')
     setErrProfil('')
     if (id === 'notifications') loadNotifs(tokenRef.current)
+    if (id === 'taches') chargerStagesEtud()
   }
 
   const completion = (() => {
@@ -473,8 +507,10 @@ export default function DashboardEtudiant() {
         {profil && (
           <div style={{ position: 'relative' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '6px 10px', borderRadius: 10, border: '1px solid #eef2fa' }} onClick={() => setMenuOuvert(o => !o)}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: NAVY, display: 'flex', alignItems: 'center', justifyContent: 'center', color: WHITE, fontWeight: 700, fontSize: 13 }}>
-                {initiales(profil.nom, profil.prenom)}
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: NAVY, display: 'flex', alignItems: 'center', justifyContent: 'center', color: WHITE, fontWeight: 700, fontSize: 13, overflow: 'hidden' }}>
+                {profil.photoUrl
+                ? <img src={profil.photoUrl} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : initiales(profil.nom, profil.prenom)}
               </div>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, lineHeight: 1.2 }}>{profil.prenom} {profil.nom}</div>
@@ -1423,8 +1459,10 @@ export default function DashboardEtudiant() {
         {errProfil && <div style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 9, padding: '10px 16px', marginBottom: 14, fontSize: 13, fontWeight: 600 }}>✗ {errProfil}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 20 }}>
           <div style={{ ...cardSt, textAlign: 'center', padding: '32px 24px' }}>
-            <div style={{ width: 86, height: 86, borderRadius: '50%', background: 'linear-gradient(135deg, #dce8fd, #c7d8fb)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px', boxShadow: '0 4px 16px rgba(29,111,232,0.15)' }}>
-              <svg width="40" height="40" fill="none" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke={BLUE} strokeWidth="1.8"/><circle cx="12" cy="7" r="4" stroke={BLUE} strokeWidth="1.8"/></svg>
+            <div style={{ width: 86, height: 86, borderRadius: '50%', background: 'linear-gradient(135deg, #dce8fd, #c7d8fb)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px', boxShadow: '0 4px 16px rgba(29,111,232,0.15)', overflow: 'hidden' }}>
+             {profil?.photoUrl
+              ? <img src={profil.photoUrl} alt="Photo profil" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : <svg width="40" height="40" fill="none" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke={BLUE} strokeWidth="1.8"/><circle cx="12" cy="7" r="4" stroke={BLUE} strokeWidth="1.8"/></svg>}
             </div>
             <div style={{ fontWeight: 800, fontSize: 17, color: NAVY, marginBottom: 3 }}>{profil?.prenom} {profil?.nom}</div>
             <div style={{ fontSize: 12, color: MUTED, marginBottom: 18, background: '#f4f7fc', display: 'inline-block', padding: '3px 12px', borderRadius: 20 }}>Étudiant</div>
@@ -1628,6 +1666,41 @@ export default function DashboardEtudiant() {
         {vue === 'journal'         && renderJournal()}
         {vue === 'convention'      && renderConvention()}
         {vue === 'profil'          && renderProfil()}
+        {vue === 'taches'          && (
+          <div style={{ padding: '32px 36px' }}>
+            <h2 style={{ margin: '0 0 24px', fontSize: 22, fontWeight: 800, color: NAVY }}>Mes tâches</h2>
+            {chgtStages && <p style={{ color: MUTED }}>Chargement...</p>}
+            {!chgtStages && stagesEtud.length === 0 && (
+              <p style={{ color: MUTED }}>Aucune tâche assignée pour l&apos;instant.</p>
+            )}
+            {stagesEtud.map(stage => (
+              <div key={stage.id} style={{ background: WHITE, borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: '0 2px 8px rgba(11,47,122,.08)', border: '1px solid #eef2fa' }}>
+                <div style={{ fontWeight: 700, color: NAVY, fontSize: 15, marginBottom: 4 }}>
+                  {stage.candidature?.offre?.titre} — {stage.candidature?.offre?.entreprise?.nom}
+                </div>
+                <div style={{ color: MUTED, fontSize: 13, marginBottom: 12 }}>
+                  Stage du {fmtDate(stage.dateDebut)} au {fmtDate(stage.dateFin)}
+                </div>
+                {stage.taches.length === 0 && <p style={{ color: MUTED, fontSize: 13 }}>Aucune tâche pour ce stage.</p>}
+                {stage.taches.map(t => {
+                  const s = t.statut === 'TERMINEE' ? { color: '#15803d', bg: '#dcfce7', label: 'Terminée' }
+                    : t.statut === 'EN_COURS' ? { color: '#d97706', bg: '#fef3c7', label: 'En cours' }
+                    : { color: '#6b7a99', bg: '#f0f4f8', label: 'En attente' }
+                  return (
+                    <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 0', borderTop: '1px solid #e8edf5' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, color: NAVY, fontSize: 14, textDecoration: t.statut === 'TERMINEE' ? 'line-through' : 'none' }}>{t.titre}</div>
+                        {t.description && <div style={{ color: MUTED, fontSize: 13, marginTop: 2 }}>{t.description}</div>}
+                        {t.deadline && <div style={{ color: BLUE, fontSize: 12, marginTop: 4 }}>📅 Deadline : {fmtDate(t.deadline)}</div>}
+                      </div>
+                      <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600, color: s.color, background: s.bg }}>{s.label}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+        )}
       </main>
       {modal}
     </div>

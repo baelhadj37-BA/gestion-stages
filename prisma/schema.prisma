@@ -34,6 +34,12 @@ enum StatutConvention {
   REJETEE
 }
 
+enum StatutTache {
+  EN_ATTENTE
+  EN_COURS
+  TERMINEE
+}
+
 model User {
   id          Int      @id @default(autoincrement())
   nom         String
@@ -109,6 +115,7 @@ model Stage {
   documents            Document[]
   evaluation           Evaluation?
   evaluationEntreprise EvaluationEntreprise?
+  taches               Tache[]
 }
 
 model JournalBord {
@@ -197,4 +204,15 @@ model Message {
   expediteurId    Int
   destinataire    User @relation("MessageDestinataire",  fields: [destinataireId], references: [id])
   destinataireId  Int
+}
+
+model Tache {
+  id          Int         @id @default(autoincrement())
+  titre       String
+  description String?     @db.Text
+  deadline    DateTime?
+  statut      StatutTache @default(EN_ATTENTE)
+  stageId     Int
+  stage       Stage       @relation(fields: [stageId], references: [id])
+  createdAt   DateTime    @default(now())
 }

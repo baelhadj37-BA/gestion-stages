@@ -1,60 +1,65 @@
-// app/api/etudiant/notifications/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { verifierToken } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import prisma from '@/lib/prisma'
 
-// GET — récupérer les notifications de l'étudiant connecté
 export async function GET(request: NextRequest) {
-  try {
-    const token = request.headers.get('authorization')?.split(' ')[1]
-    if (!token) return NextResponse.json({ message: 'Token manquant' }, { status: 401 })
-    const utilisateur = verifierToken(token)
-    if (!utilisateur || utilisateur.role !== 'ETUDIANT') {
-      return NextResponse.json({ message: 'Accès réservé aux étudiants' }, { status: 403 })
-    }
+  const token = request.headers.get('authorization')?.split(' ')[1]
+  if (!token) return NextResponse.json({ message: 'Token manquant' }, { status: 401 })
+  const utilisateur = verifierToken(token)
+  if (!utilisateur || utilisateur.role !== 'ETUDIANT') {
+    return NextResponse.json({ message: 'Accès réservé aux étudiants' }, { status: 403 })
+  }
 
+  try {
     const notifications = await prisma.notification.findMany({
       where: { userId: utilisateur.userId },
       orderBy: { createdAt: 'desc' },
-      take: 20,
+      take: 50,
     })
 
-    return NextResponse.json({ notifications })
+    const nonLues = notifications.filter(n => !n.lu).length
+
+    return NextResponse.json({
+      notifications: notifications.map(n => ({
+        id: n.id,
+        message: n.message,
+        type: n.type,
+        lu: n.lu,
+        date: n.createdAt,
+      })),
+      nonLues,
+    })
   } catch (error) {
     console.error('[GET /api/etudiant/notifications]', error)
     return NextResponse.json({ message: 'Erreur serveur' }, { status: 500 })
   }
 }
 
-// PATCH — marquer une notification comme lue
 export async function PATCH(request: NextRequest) {
+  const token = request.headers.get('authorization')?.split(' ')[1]
+  if (!token) return NextResponse.json({ message: 'Token manquant' }, { status: 401 })
+  const utilisateur = verifierToken(token)
+  if (!utilisateur || utilisateur.role !== 'ETUDIANT') {
+    return NextResponse.json({ message: 'Accès réservé aux étudiants' }, { status: 403 })
+  }
+
   try {
-    const token = request.headers.get('authorization')?.split(' ')[1]
-    if (!token) return NextResponse.json({ message: 'Token manquant' }, { status: 401 })
-    const utilisateur = verifierToken(token)
-    if (!utilisateur || utilisateur.role !== 'ETUDIANT') {
-      return NextResponse.json({ message: 'Accès réservé aux étudiants' }, { status: 403 })
-    }
+    const body = await request.json()
+    const { id } = body
 
-    const { id, toutMarquer } = await request.json()
-
-    if (toutMarquer) {
+    if (id) {
+      await prisma.notification.updateMany({
+        where: { id: Number(id), userId: utilisateur.userId },
+        data: { lu: true },
+      })
+    } else {
       await prisma.notification.updateMany({
         where: { userId: utilisateur.userId, lu: false },
         data: { lu: true },
       })
-      return NextResponse.json({ message: 'Toutes les notifications marquées comme lues' })
     }
 
-    if (id) {
-      await prisma.notification.update({
-        where: { id },
-        data: { lu: true },
-      })
-      return NextResponse.json({ message: 'Notification marquée comme lue' })
-    }
-
-    return NextResponse.json({ message: 'id ou toutMarquer requis' }, { status: 400 })
+    return NextResponse.json({ message: 'Notification(s) marquée(s) comme lue(s)' })
   } catch (error) {
     console.error('[PATCH /api/etudiant/notifications]', error)
     return NextResponse.json({ message: 'Erreur serveur' }, { status: 500 })

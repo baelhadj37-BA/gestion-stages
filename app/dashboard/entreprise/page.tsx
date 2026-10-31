@@ -22,6 +22,7 @@ type Vue =
   | 'candidatures'
   | 'conventions'
   | 'messages'
+  | 'stagiaires'
   | 'parametres'
 
 interface Offre {
@@ -76,6 +77,26 @@ interface EvalForm {
   note: string
   commentaire: string
   attestation: boolean
+}
+
+interface Tache {
+  id: number
+  titre: string
+  description: string | null
+  deadline: string | null
+  statut: 'EN_ATTENTE' | 'EN_COURS' | 'TERMINEE'
+  stageId: number
+  createdAt: string
+}
+
+interface StageAvecTaches {
+  id: number
+  statut: string
+  taches: Tache[]
+  candidature: {
+    etudiant: { id: number; nom: string; prenom: string }
+    offre: { titre: string }
+  }
 }
 
 /* ─── Mise à l'échelle ─── */
@@ -207,6 +228,7 @@ const NAV: { id: Vue; label: string; icon: IconName }[] = [
   { id: 'offres',       label: 'Mes offres de stage',   icon: 'briefcase' },
   { id: 'candidatures', label: 'Mes candidatures',      icon: 'doc'       },
   { id: 'conventions',  label: 'Conventions',           icon: 'docCheck'  },
+  { id: 'stagiaires',   label: 'Mes stagiaires',         icon: 'users'     },
   { id: 'messages',     label: 'Messages',              icon: 'message'   },
   { id: 'parametres',   label: 'Paramètres',            icon: 'gear'      },
 ]
@@ -306,6 +328,15 @@ export default function EntrepriseDashboard() {
   const [evalEnCours, setEvalEnCours] = useState<number | null>(null)
   const [evalMsgs, setEvalMsgs] = useState<Record<number, { type: 'ok' | 'err'; texte: string }>>({})
   const [evalOuverts, setEvalOuverts] = useState<Record<number, boolean>>({})
+
+  // Stagiaires & tâches
+  const [stages, setStages] = useState<StageAvecTaches[]>([])
+  const [stagesChargement, setStagesChargement] = useState(false)
+  const [stagesErreur, setStagesErreur] = useState('')
+  const [stageActif, setStageActif] = useState<number | null>(null)
+  const [tacheForm, setTacheForm] = useState({ titre: '', description: '', deadline: '' })
+  const [tacheEnvoi, setTacheEnvoi] = useState(false)
+  const [tacheMsg, setTacheMsg] = useState('')
 
   // ── Paramètres ──
   const [mdpForm, setMdpForm] = useState({ ancien: '', nouveau: '', confirmation: '' })
@@ -709,6 +740,60 @@ export default function EntrepriseDashboard() {
     }
   }
 
+   const chargerStages = async () => {
+    const token = localStorage.getItem('token')
+    setStagesChargement(true)
+    setStagesErreur('')
+    try {
+      const res = await fetch('/api/taches', { headers: { authorization: `Bearer ${token}` } })
+      if (!res.ok) { setStagesErreur('Impossible de charger les stagiaires'); return }
+      const data = await res.json()
+      setStages(data.data ?? [])
+    } catch {
+      setStagesErreur('Impossible de contacter le serveur.')
+    } finally {
+      setStagesChargement(false)
+    }
+  }
+
+  const creerTache = async (stageId: number) => {
+    const token = localStorage.getItem('token')
+    if (!tacheForm.titre) { setTacheMsg('Le titre est obligatoire'); return }
+    setTacheEnvoi(true)
+    setTacheMsg('')
+    try {
+      const res = await fetch('/api/taches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ...tacheForm, stageId }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setTacheMsg(data.error ?? 'Erreur'); return }
+      setStages(prev => prev.map(s => s.id === stageId ? { ...s, taches: [data.data, ...s.taches] } : s))
+      setTacheForm({ titre: '', description: '', deadline: '' })
+    } catch {
+      setTacheMsg('Impossible de contacter le serveur.')
+    } finally {
+      setTacheEnvoi(false)
+    }
+  }
+
+  const changerStatutTache = async (tacheId: number, statut: string, stageId: number) => {
+    const token = localStorage.getItem('token')
+    try {
+      const res = await fetch('/api/taches', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ id: tacheId, statut }),
+      })
+      if (!res.ok) return
+      setStages(prev => prev.map(s => s.id === stageId
+        ? { ...s, taches: s.taches.map(t => t.id === tacheId ? { ...t, statut: statut as Tache['statut'] } : t) }
+        : s
+      ))
+    } catch { /* silencieux */ }
+  }
+
   const seDeconnecter = () => {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
@@ -802,6 +887,7 @@ export default function EntrepriseDashboard() {
                     if (n.id === 'offres') chargerOffres()
                     if (n.id === 'messages') chargerNotifications()
                     if (n.id === 'conventions') chargerConventions()
+                    if (n.id === 'stagiaires') chargerStages()
                   }}
                   className={actif ? '' : 'hover:bg-white/10'}
                   style={{
@@ -2039,7 +2125,117 @@ export default function EntrepriseDashboard() {
           )}
 
           {/* ─── PARAMÈTRES ─── */}
-          {vue === 'parametres' && (
+        {vue === 'stagiaires' && (
+            <>
+              <h1 style={titrePage}>Mes stagiaires</h1>
+              <p style={{ color: MUTED, marginTop: 4, marginBottom: 28 }}>Assignez des tâches à vos stagiaires et suivez leur progression.</p>
+              {stagesChargement && <p style={{ color: MUTED }}>Chargement…</p>}
+              {stagesErreur && <p style={{ color: '#dc2626' }}>{stagesErreur}</p>}
+              {!stagesChargement && stages.length === 0 && !stagesErreur && (
+                <div style={{ ...CARTE, padding: 40, textAlign: 'center', color: MUTED }}>Aucun stagiaire actif pour le moment.</div>
+              )}
+              {stages.map(stage => {
+                const etudiant = stage.candidature.etudiant
+                const offre = stage.candidature.offre
+                const ouvert = stageActif === stage.id
+                const terminees = stage.taches.filter(t => t.statut === 'TERMINEE').length
+                return (
+                  <div key={stage.id} style={{ ...CARTE, padding: 0, marginBottom: 18, overflow: 'hidden' }}>
+                    {/* En-tête stagiaire */}
+                    <div
+                      onClick={() => setStageActif(ouvert ? null : stage.id)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 24px', cursor: 'pointer', borderBottom: ouvert ? '1px solid #eef2fa' : 'none' }}
+                    >
+                      <div style={{ width: 44, height: 44, borderRadius: '50%', background: BLUE, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 17, flexShrink: 0 }}>
+                        {etudiant.prenom[0]}{etudiant.nom[0]}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ margin: 0, fontWeight: 700, color: NAVY, fontSize: 16 }}>{etudiant.prenom} {etudiant.nom}</p>
+                        <p style={{ margin: '2px 0 0', fontSize: 13, color: MUTED }}>{offre.titre}</p>
+                      </div>
+                      <div style={{ fontSize: 13, color: MUTED, marginRight: 16 }}>
+                        {terminees}/{stage.taches.length} tâches terminées
+                      </div>
+                      <span style={{ color: MUTED, fontSize: 18 }}>{ouvert ? '▲' : '▼'}</span>
+                    </div>
+
+                    {ouvert && (
+                      <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        {/* Formulaire nouvelle tâche */}
+                        <div style={{ background: '#f8faff', borderRadius: 10, padding: 16, border: '1px solid #e0e8f8' }}>
+                          <p style={{ margin: '0 0 12px', fontWeight: 600, color: NAVY, fontSize: 14 }}>Nouvelle tâche</p>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                            <input
+                              value={tacheForm.titre}
+                              onChange={e => setTacheForm(p => ({ ...p, titre: e.target.value }))}
+                              placeholder="Titre de la tâche *"
+                            style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #dbe4f8', borderRadius: 8, fontSize: 14, outline: 'none', color: '#0b2f7a' }}
+                            />
+                            <textarea
+                              value={tacheForm.description}
+                              onChange={e => setTacheForm(p => ({ ...p, description: e.target.value }))}
+                              placeholder="Description (optionnel)"
+                              rows={2}
+                            style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #dbe4f8', borderRadius: 8, fontSize: 14, outline: 'none', resize: 'vertical', color: '#0b2f7a' }}
+                            />
+                            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                              <input
+                                type="date"
+                                value={tacheForm.deadline}
+                                onChange={e => setTacheForm(p => ({ ...p, deadline: e.target.value }))}
+                               style={{ flex: 1, padding: '9px 12px', border: '1.5px solid #dbe4f8', borderRadius: 8, fontSize: 14, outline: 'none', color: '#0b2f7a' }}
+                              />
+                              <button
+                                onClick={() => creerTache(stage.id)}
+                                disabled={tacheEnvoi}
+                                style={{ padding: '9px 20px', background: BLUE, color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: tacheEnvoi ? 'not-allowed' : 'pointer', opacity: tacheEnvoi ? 0.7 : 1 }}
+                              >
+                                {tacheEnvoi ? 'Envoi…' : '+ Assigner'}
+                              </button>
+                            </div>
+                            {tacheMsg && <p style={{ margin: 0, fontSize: 13, color: '#dc2626' }}>{tacheMsg}</p>}
+                          </div>
+                        </div>
+
+                        {/* Liste des tâches */}
+                        {stage.taches.length === 0 && (
+                          <p style={{ color: MUTED, fontSize: 14, margin: 0 }}>Aucune tâche assignée pour l&instant.</p>
+                        )}
+                        {stage.taches.map(tache => {
+                          const couleurStatut = tache.statut === 'TERMINEE' ? '#15803d' : tache.statut === 'EN_COURS' ? '#d97706' : MUTED
+                          const fondStatut   = tache.statut === 'TERMINEE' ? '#d9f5e3' : tache.statut === 'EN_COURS' ? '#fef3c7' : '#f1f5f9'
+                          const labelStatut  = tache.statut === 'TERMINEE' ? 'Terminée' : tache.statut === 'EN_COURS' ? 'En cours' : 'En attente'
+                          return (
+                            <div key={tache.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 16px', background: '#fff', border: '1px solid #eef2fa', borderRadius: 10 }}>
+                              <div style={{ flex: 1 }}>
+                                <p style={{ margin: 0, fontWeight: 600, color: NAVY, fontSize: 14 }}>{tache.titre}</p>
+                                {tache.description && <p style={{ margin: '4px 0 0', fontSize: 13, color: MUTED }}>{tache.description}</p>}
+                                {tache.deadline && <p style={{ margin: '4px 0 0', fontSize: 12, color: MUTED }}>📅 {formatDate(tache.deadline)}</p>}
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                                <span style={{ padding: '4px 10px', borderRadius: 20, background: fondStatut, color: couleurStatut, fontSize: 12, fontWeight: 600 }}>{labelStatut}</span>
+                                <select
+                                  value={tache.statut}
+                                  onChange={e => changerStatutTache(tache.id, e.target.value, stage.id)}
+                                  style={{ padding: '5px 8px', border: '1.5px solid #dbe4f8', borderRadius: 7, fontSize: 13, cursor: 'pointer', outline: 'none' }}
+                                >
+                                  <option value="EN_ATTENTE">En attente</option>
+                                  <option value="EN_COURS">En cours</option>
+                                  <option value="TERMINEE">Terminée</option>
+                                </select>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </>
+          )}
+
+        {vue === 'parametres' && (
             <>
               <h1 style={titrePage}>Paramètres</h1>
 
